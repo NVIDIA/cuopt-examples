@@ -42,7 +42,7 @@ The following instructions are for developers and contributors to cuOpt Examples
 ### General requirements
 
 - Python 3.8+
-- CUDA 11.4+
+- CUDA 11.8+
 - NVIDIA GPU with Volta architecture or better (Compute Capability >=7.0)
 - NVIDIA cuOpt service API access and credentials
 
@@ -156,9 +156,3 @@ The following section describes some of the core pre-commit hooks used by the re
 - Add performance tests for critical paths
 - Test with different input data sizes and configurations
 - Include API error handling tests
-
-## Attribution
-
-Portions of this guide were adapted from:
-- [cuDF Contributing Guide](https://github.com/rapidsai/cudf/blob/branch-25.06/CONTRIBUTING.md)
-- [cuOpt-Resources Repository](https://github.com/NVIDIA/cuOpt-Resources) 
