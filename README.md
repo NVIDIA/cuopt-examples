@@ -72,11 +72,7 @@ jupyter notebook
 
 ## Requirements
 
-General requirements for all notebooks:
-- NVIDIA GPU with appropriate drivers
-- CUDA 11.4+
-- Python 3.8+
-- Jupyter Notebook
+For detailed system requirements, please refer to the [NVIDIA cuOpt System Requirements documentation](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html#).
 
 Specific requirements are listed in each workflow's README.md and requirements.txt files.
 
