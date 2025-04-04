@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 name: Bug Report
-description: File a bug report for cuOpt
+description: File a bug report for NVIDIA cuOpt
 title: "[BUG]: "
 labels: ["bug", "? - Needs Triage"]
 
@@ -10,13 +10,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to help cuOpt and fill out this bug report!
+        Thanks for taking the time to help NVIDIA cuOpt and fill out this bug report!
 
   - type: input
     id: version
     attributes:
       label: Version
-      description: What version of cuOpt are you running?
+      description: What version of NVIDIA cuOpt are you running?
       placeholder: "example: 22.12"
     validations:
       required: true

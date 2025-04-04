@@ -1,11 +1,11 @@
-# Vehicle Routing Problem (VRP) with cuOpt
+# Vehicle Routing Problem (VRP) with NVIDIA cuOpt
 
 This notebook demonstrates how to solve a Vehicle Routing Problem using NVIDIA cuOpt. The example showcases optimization for last-mile delivery scenarios with multiple vehicles, time windows, and capacity constraints.
 
 ## Overview
 
 The notebook `vrp_optimization.ipynb` demonstrates:
-- Setting up and solving a VRP problem using cuOpt Server API
+- Setting up and solving a VRP problem using NVIDIA cuOpt SDK
 - Handling multiple vehicles with different capacities
 - Managing time windows for deliveries
 - Visualizing routes on a map
@@ -25,12 +25,12 @@ Install the requirements using:
 pip install -r requirements.txt
 ```
 
-## cuOpt Server API
+## NVIDIA cuOpt SDK
 
-This example uses the cuOpt Server API. Make sure you have:
-1. Valid cuOpt Server API credentials
-2. Access to cuOpt Server endpoint
-3. Proper environment variables set for authentication
+This example uses the NVIDIA cuOpt SDK for local execution. Make sure you have:
+1. NVIDIA GPU with appropriate drivers
+2. CUDA toolkit installed
+3. NVIDIA cuOpt SDK properly installed and configured
 
 ## Data
 

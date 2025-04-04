@@ -1,6 +1,6 @@
 # NVIDIA cuOpt Example Notebooks
 
-Welcome to the cuOpt example notebooks repository! This collection of notebooks demonstrates how to use NVIDIA cuOpt for various optimization problems across different industries and workflows.
+Welcome to the NVIDIA cuOpt example notebooks repository! This collection of notebooks demonstrates how to use NVIDIA cuOpt for various optimization problems across different industries and workflows.
 
 ## Repository Structure
 
@@ -21,10 +21,10 @@ notebooks-contrib/
 ## Available Examples
 
 ### Finance
-- **Portfolio Optimization**: Demonstrates portfolio optimization using cuOpt SDK for efficient financial portfolio optimization.
+- **Portfolio Optimization**: Demonstrates portfolio optimization using NVIDIA cuOpt SDK for efficient financial portfolio optimization.
 
 ### Last Mile Delivery
-- **Vehicle Routing**: Shows how to solve Vehicle Routing Problems (VRP) using cuOpt SDK for optimizing delivery routes.
+- **Vehicle Routing**: Shows how to solve Vehicle Routing Problems (VRP) using NVIDIA cuOpt SDK for optimizing delivery routes.
 
 ## Getting Started
 

@@ -1,11 +1,11 @@
-# Portfolio Optimization with cuOpt
+# Portfolio Optimization with NVIDIA cuOpt
 
 This notebook demonstrates how to optimize investment portfolios using NVIDIA cuOpt. The example shows how to maximize returns while managing risk through efficient frontier optimization.
 
 ## Overview
 
 The notebook `portfolio_optimization.ipynb` demonstrates:
-- Setting up and solving portfolio optimization problems using cuOpt SDK
+- Setting up and solving portfolio optimization problems using NVIDIA cuOpt SDK
 - Implementing mean-variance optimization
 - Computing efficient frontier
 - Risk-return analysis
@@ -26,12 +26,12 @@ Install the requirements using:
 pip install -r requirements.txt
 ```
 
-## cuOpt SDK
+## NVIDIA cuOpt SDK
 
-This example uses the cuOpt SDK for local execution. Make sure you have:
+This example uses the NVIDIA cuOpt SDK for local execution. Make sure you have:
 1. NVIDIA GPU with appropriate drivers
 2. CUDA toolkit installed
-3. cuOpt SDK properly installed and configured
+3. NVIDIA cuOpt SDK properly installed and configured
 
 ## Data
 

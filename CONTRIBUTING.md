@@ -1,6 +1,6 @@
-# Contributing to cuOpt Examples and Workflows
+# Contributing to NVIDIA cuOpt Examples and Workflows
 
-Contributions to cuOpt Examples and Workflows fall into the following categories:
+Contributions to NVIDIA cuOpt Examples and Workflows fall into the following categories:
 
 1. To report a bug, request a new feature, or report a problem with documentation, please file an issue describing the problem or new feature in detail. The team evaluates and triages issues, and schedules them for a release. If you believe the issue needs priority attention, please comment on the issue to notify the team.
 
@@ -37,7 +37,7 @@ Look at the unassigned issues, and find an issue to which you are comfortable co
 
 ## Setting up your build environment
 
-The following instructions are for developers and contributors to cuOpt Examples and Workflows development. These instructions are tested on Ubuntu Linux LTS releases. Use these instructions to build and contribute to the development. Other operating systems may be compatible, but are not currently tested.
+The following instructions are for developers and contributors to NVIDIA cuOpt Examples and Workflows development. These instructions are tested on Ubuntu Linux LTS releases. Use these instructions to build and contribute to the development. Other operating systems may be compatible, but are not currently tested.
 
 ### General requirements
 
@@ -65,7 +65,7 @@ conda activate cuopt-dev
 pip install -r requirements.txt
 ```
 
-4. Set up your cuOpt service API credentials:
+4. Set up your NVIDIA cuOpt service API credentials:
 ```bash
 export CUOPT_API_KEY=your_api_key_here
 ```
@@ -133,7 +133,7 @@ The following section describes some of the core pre-commit hooks used by the re
 - Include error handling and edge cases
 - Provide example input data or instructions for generating test data
 - Add visualization of results where applicable
-- Follow the cuOpt service API best practices and guidelines
+- Follow the NVIDIA cuOpt service API best practices and guidelines
 - Include example configuration files for different use cases
 - Document any specific requirements or limitations
 
