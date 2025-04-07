@@ -2,73 +2,48 @@
 NVIDIA cuOpt is an accelerated Operations Research optimization API to help developers create complex, real-time fleet routing workflows on NVIDIA GPUs.
 This repository contains a collection of examples demonstrating use of NVIDIA cuOpt via service APIs and SDK. 
 
-
 The cuOpt-Resources repository is under [Apache 2.0 License](LICENSE.md)
 
- [cuOpt Docs](https://docs.nvidia.com/cuopt/)
+[cuOpt Docs](https://docs.nvidia.com/cuopt/)
+
+## Quick Start with Docker
+
+The easiest way to get started with these examples is using our Docker container, which comes with all the necessary dependencies pre-installed.
+
+### Prerequisites
+- Docker
+- NVIDIA Container Toolkit
+- NVIDIA GPU with appropriate drivers
+
+### Running the Examples
+1. Clone this repository:
+```bash
+git clone https://github.com/NVIDIA/cuOpt-Resources.git
+cd cuOpt-Resources
+```
+
+2. Start the Jupyter notebook environment:
+```bash
+docker-compose up
+```
+
+3. Open your browser at http://localhost:8888 to access the notebooks
+
+## Repository Structure
+
+To explore the repository structure, run:
+```bash
+./explore.sh
+```
+
+This will show you a tree view of all notebooks and directories in the repository.
 
 ## Contents
 * NVIDIA cuOpt managed service example notebooks
   * [Routing Optimization](notebooks/routing/) 
-# NVIDIA cuOpt Examples and Workflows
-
-Welcome to the cuOpt example notebooks repository! This collection of notebooks demonstrates how to use NVIDIA cuOpt for various optimization problems across different industries and workflows.
-
-## Repository Structure
-
-```
-notebooks-contrib/
-├── Finance/
-│   └── Portfolio_Optimization/
-│       ├── README.md
-│       ├── requirements.txt
-│       └── portfolio_optimization.ipynb
-└── Last_Mile_Delivery/
-    └── Vehicle_Routing/
-        ├── README.md
-        ├── requirements.txt
-        └── vrp_optimization.ipynb
-
-notebooks/
-└── routing/
-    ├── managed_service/
-    │   └── [managed service examples]
-    └── on_prem_service/
-        └── [on-premises service examples]
-```
-
-## Available Examples
-
-### Finance
-- **Portfolio Optimization**: Demonstrates portfolio optimization using cuOpt SDK for efficient frontier computation and risk-return analysis.
-
-### Last Mile Delivery
-- **Vehicle Routing**: Shows how to solve Vehicle Routing Problems (VRP) using cuOpt Server API for optimizing delivery routes.
-
-### Routing Examples
-- **Managed Service**: Examples demonstrating the use of cuOpt managed service API
-- **On-Premises Service**: Examples showing how to use cuOpt on-premises service
-
-## Getting Started
-
-1. Clone this repository:
-```bash
-git clone https://github.com/NVIDIA/cuopt-examples.git
-cd cuopt-examples/notebooks-contrib
-```
-
-2. Choose a workflow directory and follow the instructions in its README.md file.
-
-3. Install the required dependencies for the specific workflow:
-```bash
-cd <workflow_directory>
-pip install -r requirements.txt
-```
-
-4. Launch Jupyter Notebook:
-```bash
-jupyter notebook
-```
+* NVIDIA cuOpt Examples and Workflows
+  * [Finance](notebooks-contrib/Finance/)
+  * [Last Mile Delivery](notebooks-contrib/Last_Mile_Delivery/)
 
 ## Requirements
 
