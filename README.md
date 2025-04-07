@@ -29,6 +29,28 @@ docker-compose up
 
 3. Open your browser at http://localhost:8888 to access the notebooks
 
+## Notebook Naming Convention
+
+All notebooks in this repository follow a consistent naming convention based on their directory structure. The naming pattern is:
+
+```
+<directory_abbreviation>_<subdirectory_abbreviation>_<notebook_name>.ipynb
+```
+
+Directory abbreviations:
+- `RT` - Routing
+- `MGD_SRVC` - Managed Service
+- `ONP_SRVC` - On-Premises Service
+- `FIN` - Finance
+- `LMD` - Last Mile Delivery
+- `nbutils` - Notebook Utils
+- `VRP` - Vehicle Routing
+- `PORTFOLIO_OPT` - Portfolio Optimization
+
+Example:
+- A notebook in `routing/managed_service/example.ipynb` would be renamed to `RT_MGD_SRVC_example.ipynb`
+- A notebook in `Finance/Portfolio_Optimization/optimization.ipynb` would be renamed to `FIN_PORTFOLIO_OPT_optimization.ipynb`
+
 ## Repository Structure
 
 To explore the repository structure, run:
