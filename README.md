@@ -29,36 +29,46 @@ docker-compose up
 
 3. Open your browser at http://localhost:8888 to access the notebooks
 
+## Repository Structure
+
+The repository is organized by verticals and implementation types:
+
+### Verticals
+- `INT_FAC` - Intra Factory Optimization
+- `LMD` - Last Mile Delivery
+- `DIS` - Dispatch Optimization
+- `PDP` - Pickup and Delivery
+- `FIN` - Financial Optimization
+
+### Implementation Types
+- `SER` - Service API Implementation
+- `PY` - Python SDK Implementation
+
+### Directory Naming Convention
+Each directory follows the pattern: `[VERTICAL][SER/PY]`
+
+Examples:
+- `INT_FAC_SER` - Intra Factory Optimization using Service API
+- `LMD_PY` - Last Mile Delivery using Python SDK
+- `PDP_SER` - Pickup and Delivery using Service API
+
+### Template Directories
+Template directories are prefixed with `TEMPLATE_` and contain placeholder files with 0 bytes. These serve as reference for creating new examples.
+
+Example:
+- `TEMPLATE_FIN_SER` - Template for Financial Service API examples
+
 ## Notebook Naming Convention
 
 All notebooks in this repository follow a consistent naming convention based on their directory structure. The naming pattern is:
 
 ```
-<directory_abbreviation>_<subdirectory_abbreviation>_<notebook_name>.ipynb
+<directory_abbreviation>_<notebook_name>.ipynb
 ```
-
-Directory abbreviations:
-- `RT` - Routing
-- `MGD_SRVC` - Managed Service
-- `ONP_SRVC` - On-Premises Service
-- `FIN` - Finance
-- `LMD` - Last Mile Delivery
-- `nbutils` - Notebook Utils
-- `VRP` - Vehicle Routing
-- `PORTFOLIO_OPT` - Portfolio Optimization
 
 Example:
-- A notebook in `routing/managed_service/example.ipynb` would be renamed to `RT_MGD_SRVC_example.ipynb`
-- A notebook in `Finance/Portfolio_Optimization/optimization.ipynb` would be renamed to `FIN_PORTFOLIO_OPT_optimization.ipynb`
-
-## Repository Structure
-
-To explore the repository structure, run:
-```bash
-./explore.sh
-```
-
-This will show you a tree view of all notebooks and directories in the repository.
+- A notebook in `PDP_SER/priority_routing.ipynb` would be named `PDP_SER_priority_routing.ipynb`
+- A notebook in `INT_FAC_PY/workflow.ipynb` would be named `INT_FAC_PY_workflow.ipynb`
 
 ## Contents
 * NVIDIA cuOpt managed service example notebooks
