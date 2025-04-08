@@ -23,7 +23,6 @@ RUN pip3 install --no-cache-dir \
     seaborn>=0.11.0 \
     plotly>=5.3.0 \
     nvidia-cuopt>=1.0.0 \
-    cuopt-sh-client>=1.0.0 \
     folium>=0.12.0
 
 # Create workspace directory

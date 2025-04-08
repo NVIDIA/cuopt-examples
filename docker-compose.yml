@@ -19,7 +19,4 @@ services:
       # Directory naming convention for reference
       - VERTICALS=INT_FAC,LMD,DIS,PDP,FIN
       - IMPLEMENTATIONS=SER,PY
-      # cuOpt service configuration
-      - CUOPT_SERVICE_HOST=0.0.0.0
-      - CUOPT_SERVICE_PORT=5000
     command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' 

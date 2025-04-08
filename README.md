@@ -31,51 +31,26 @@ docker-compose up
 
 ## Repository Structure
 
-The repository is organized by verticals and implementation types:
+The repository is organized by use cases, with each directory containing examples and implementations specific to that use case. Each use case directory includes:
+- Example notebooks
+- Implementation files
+- README.md with specific instructions
+- requirements.txt for dependencies
 
-### Verticals
-- `INT_FAC` - Intra Factory Optimization
-- `LMD` - Last Mile Delivery
-- `DIS` - Dispatch Optimization
-- `PDP` - Pickup and Delivery
-- `FIN` - Financial Optimization
+## Featured Examples
 
-### Implementation Types
-- `SER` - Service API Implementation
-- `PY` - Python SDK Implementation
+### Intra-Factory Transport Optimization
+The `intra-factory_transport` directory contains an example of using the cuOpt SDK API to solve a Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW) for optimizing routes of Autonomous Mobile Robots (AMRs) within a factory environment.
 
-### Directory Naming Convention
-Each directory follows the pattern: `[VERTICAL][SER/PY]`
-
-Examples:
-- `INT_FAC_SER` - Intra Factory Optimization using Service API
-- `LMD_PY` - Last Mile Delivery using Python SDK
-- `PDP_SER` - Pickup and Delivery using Service API
-
-### Template Directories
-Template directories are prefixed with `TEMPLATE_` and contain placeholder files with 0 bytes. These serve as reference for creating new examples.
-
-Example:
-- `TEMPLATE_FIN_SER` - Template for Financial Service API examples
-
-## Notebook Naming Convention
-
-All notebooks in this repository follow a consistent naming convention based on their directory structure. The naming pattern is:
-
-```
-<directory_abbreviation>_<notebook_name>.ipynb
-```
-
-Example:
-- A notebook in `PDP_SER/priority_routing.ipynb` would be named `PDP_SER_priority_routing.ipynb`
-- A notebook in `INT_FAC_PY/workflow.ipynb` would be named `INT_FAC_PY_workflow.ipynb`
+Key features:
+- Waypoint graph representation using compressed sparse row (CSR) format
+- Transport orders with pickup and delivery locations
+- AMR fleet with capacity constraints
+- Time window constraints for operations
 
 ## Contents
-* NVIDIA cuOpt managed service example notebooks
-  * [Routing Optimization](notebooks/routing/) 
 * NVIDIA cuOpt Examples and Workflows
-  * [Finance](notebooks-contrib/Finance/)
-  * [Last Mile Delivery](notebooks-contrib/Last_Mile_Delivery/)
+  * [Intra-Factory Transport](intra-factory_transport/)
 
 ## Requirements
 
