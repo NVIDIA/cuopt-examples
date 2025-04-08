@@ -24,6 +24,8 @@ RUN pip3 install --no-cache-dir \
 WORKDIR /workspace
 
 # Copy the repository
+# Directory structure follows [VERTICAL][SER/PY] pattern
+# Example: INT_FAC_SER, LMD_PY, PDP_SER, etc.
 COPY . /workspace/
 
 # Expose Jupyter port

@@ -3,6 +3,7 @@
 # Colors for better visibility
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}NVIDIA cuOpt Resources Repository Structure${NC}\n"
@@ -14,7 +15,13 @@ print_structure() {
     
     for item in "$path"/*; do
         if [ -d "$item" ]; then
-            echo -e "${prefix}${GREEN}📁 $(basename "$item")/${NC}"
+            local dirname=$(basename "$item")
+            # Check if it's a template directory
+            if [[ "$dirname" == TEMPLATE_* ]]; then
+                echo -e "${prefix}${YELLOW}📁 $dirname/ (Template)${NC}"
+            else
+                echo -e "${prefix}${GREEN}📁 $dirname/${NC}"
+            fi
             print_structure "$item" "$prefix  "
         elif [ -f "$item" ] && [[ "$item" == *.ipynb ]]; then
             echo -e "${prefix}${BLUE}📓 $(basename "$item")${NC}"
@@ -25,6 +32,11 @@ print_structure() {
 # Print main structure
 echo "Repository Contents:"
 print_structure "." ""
+
+echo -e "\n${BLUE}Directory Naming Convention:${NC}"
+echo "- Verticals: INT_FAC (Intra Factory), LMD (Last Mile Delivery), DIS (Dispatch), PDP (Pickup and Delivery), FIN (Financial)"
+echo "- Implementation: SER (Service API), PY (Python SDK)"
+echo "- Example: PDP_SER (Pickup and Delivery using Service API)"
 
 echo -e "\n${BLUE}Getting Started:${NC}"
 echo "1. Make sure you have Docker and NVIDIA Container Toolkit installed"
