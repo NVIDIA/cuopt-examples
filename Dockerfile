@@ -16,9 +16,15 @@ RUN pip3 install --no-cache-dir \
     jupyter \
     notebook \
     ipykernel \
-    numpy \
-    pandas \
-    matplotlib
+    numpy>=1.20.0 \
+    pandas>=1.3.0 \
+    matplotlib>=3.4.0 \
+    scipy>=1.7.0 \
+    seaborn>=0.11.0 \
+    plotly>=5.3.0 \
+    nvidia-cuopt>=1.0.0 \
+    cuopt-sh-client>=1.0.0 \
+    folium>=0.12.0
 
 # Create workspace directory
 WORKDIR /workspace
