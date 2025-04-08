@@ -16,12 +16,7 @@ print_structure() {
     for item in "$path"/*; do
         if [ -d "$item" ]; then
             local dirname=$(basename "$item")
-            # Check if it's a template directory
-            if [[ "$dirname" == TEMPLATE_* ]]; then
-                echo -e "${prefix}${YELLOW}📁 $dirname/ (Template)${NC}"
-            else
-                echo -e "${prefix}${GREEN}📁 $dirname/${NC}"
-            fi
+            echo -e "${prefix}${GREEN}📁 $dirname/${NC}"
             print_structure "$item" "$prefix  "
         elif [ -f "$item" ] && [[ "$item" == *.ipynb ]]; then
             echo -e "${prefix}${BLUE}📓 $(basename "$item")${NC}"
@@ -33,13 +28,15 @@ print_structure() {
 echo "Repository Contents:"
 print_structure "." ""
 
-echo -e "\n${BLUE}Directory Naming Convention:${NC}"
-echo "- Verticals: INT_FAC (Intra Factory), LMD (Last Mile Delivery), DIS (Dispatch), PDP (Pickup and Delivery), FIN (Financial)"
-echo "- Implementation: SER (Service API), PY (Python SDK)"
-echo "- Example: PDP_SER (Pickup and Delivery using Service API)"
+echo -e "\n${BLUE}Repository Structure:${NC}"
+echo "Each use case directory contains:"
+echo "- Example notebooks demonstrating cuOpt functionality"
+echo "- Implementation files and utilities"
+echo "- README.md with specific instructions"
+echo "- requirements.txt for dependencies"
 
 echo -e "\n${BLUE}Getting Started:${NC}"
 echo "1. Make sure you have Docker and NVIDIA Container Toolkit installed"
 echo "2. Run 'docker-compose up' to start the Jupyter notebook environment"
 echo "3. Open your browser at http://localhost:8888"
-echo "4. Explore examples in the root directory" 
+echo "4. Explore the example notebooks in their respective use case directories" 
