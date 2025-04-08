@@ -2,7 +2,7 @@
 NVIDIA cuOpt is an accelerated Operations Research optimization API to help developers create complex, real-time fleet routing workflows on NVIDIA GPUs.
 This repository contains a collection of examples demonstrating use of NVIDIA cuOpt via service APIs and SDK. 
 
-The cuOpt-Resources repository is under [Apache 2.0 License](LICENSE.md)
+The cuOpt-Resources repository is under [MIT License](LICENSE.md)
 
 [cuOpt Docs](https://docs.nvidia.com/cuopt/)
 
