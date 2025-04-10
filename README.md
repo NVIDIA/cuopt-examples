@@ -42,12 +42,6 @@ The repository is organized by use cases, with each directory containing example
 ### Intra-Factory Transport Optimization
 The `intra-factory_transport` directory contains an example of using the cuOpt SDK API to solve a Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW) for optimizing routes of Autonomous Mobile Robots (AMRs) within a factory environment.
 
-Key features:
-- Waypoint graph representation using compressed sparse row (CSR) format
-- Transport orders with pickup and delivery locations
-- AMR fleet with capacity constraints
-- Time window constraints for operations
-
 ## Contents
 * NVIDIA cuOpt Examples and Workflows
   * [Intra-Factory Transport](intra-factory_transport/)

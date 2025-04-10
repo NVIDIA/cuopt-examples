@@ -19,9 +19,8 @@ As contributors and maintainers to this project, you are expected to abide by th
 3. Comment on the issue stating that you are going to work on it.
 4. Create a fork of the repository and check out a branch with a name that describes your planned work. For example, `add-new-workflow-example`.
 5. Write code to address the issue or implement the feature.
-6. Add unit tests and documentation.
-7. Create your pull request. To run continuous integration (CI) tests without requesting review, open a draft pull request.
-8. Verify that CI passes all status checks. Fix if needed.
+6. Documentation.
+7. Create your pull request.
 9. Wait for other developers to review your code and update code as needed.
 10. Once reviewed and approved, a team member will merge your pull request.
 
@@ -41,10 +40,18 @@ The following instructions are for developers and contributors to NVIDIA cuOpt E
 
 ### General requirements
 
-- Python 3.8+
-- CUDA 11.8+
-- NVIDIA GPU with Volta architecture or better (Compute Capability >=7.0)
-- NVIDIA cuOpt service API access and credentials
+For detailed system requirements, please refer to the [NVIDIA cuOpt System Requirements documentation](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html).
+
+The key requirements include:
+- Python 3.10.x
+- For Self-Hosted Container:
+  - NVIDIA GPU with Ampere (A100) or Hopper (H100) architecture for VRP
+  - CUDA 12.6
+  - Compute Capability >= 9.x
+  - Minimum NVIDIA Driver Version: 525.60.04
+- For Thin Client:
+  - OS - Ubuntu
+  - CPU - x86
 
 ### Create the build environment
 
@@ -63,11 +70,6 @@ conda activate cuopt-dev
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-4. Set up your NVIDIA cuOpt service API credentials:
-```bash
-export CUOPT_API_KEY=your_api_key_here
 ```
 
 ## Code Formatting
@@ -149,7 +151,6 @@ The following section describes some of the core pre-commit hooks used by the re
 
 ### Testing Guidelines
 
-- Write unit tests for all new functionality
 - Include integration tests for workflows
 - Test edge cases and error conditions
 - Ensure tests are deterministic
