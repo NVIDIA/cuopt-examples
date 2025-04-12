@@ -42,17 +42,6 @@ The following instructions are for developers and contributors to NVIDIA cuOpt E
 
 For detailed system requirements, please refer to the [NVIDIA cuOpt System Requirements documentation](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html).
 
-The key requirements include:
-- Python 3.10.x
-- For Self-Hosted Container:
-  - NVIDIA GPU with Ampere (A100) or Hopper (H100) architecture for VRP
-  - CUDA 12.6
-  - Compute Capability >= 9.x
-  - Minimum NVIDIA Driver Version: 525.60.04
-- For Thin Client:
-  - OS - Ubuntu
-  - CPU - x86
-
 ### Create the build environment
 
 1. Clone the repository:
@@ -63,7 +52,7 @@ cd cuopt-examples
 
 2. Create and activate a conda environment:
 ```bash
-conda create -n cuopt-dev python=3.8
+conda create -n cuopt-dev python=3.10
 conda activate cuopt-dev
 ```
 

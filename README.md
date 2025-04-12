@@ -35,7 +35,7 @@ The repository is organized by use cases, with each directory containing example
 - Example notebooks
 - Implementation files
 - README.md with specific instructions
-- requirements.txt for dependencies
+- requirements.txt for any additional dependencies that this notebook may require
 
 ## Featured Examples
 
@@ -50,7 +50,7 @@ The `intra-factory_transport` directory contains an example of using the cuOpt S
 
 For detailed system requirements, please refer to the [NVIDIA cuOpt System Requirements documentation](https://docs.nvidia.com/cuopt/user-guide/latest/system-requirements.html#).
 
-Specific requirements are listed in each workflow's README.md and requirements.txt files.
+Specific requirements are listed in each workflow's README.md and in the root directory's requirements.txt files.
 
 ## Contributing
 
