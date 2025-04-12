@@ -12,14 +12,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --quiet -r requirements.txt
 
 # Create workspace directory
 WORKDIR /workspace
 
 # Copy the repository
-# Directory structure follows [VERTICAL][SER/PY] pattern
-# Example: INT_FAC_SER, LMD_PY, PDP_SER, etc.
+# Directory structure is organized based on specific use cases
+
 COPY . /workspace/
 
 # Expose Jupyter port
