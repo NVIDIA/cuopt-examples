@@ -100,7 +100,12 @@ The following section describes some of the core pre-commit hooks used by the re
 - Add comments for complex logic
 
 ### Example and Workflow Guidelines
-
+- Structure to follow:
+    - README.md
+    - requirements.txt
+    - notebooks.ipynb
+    - data/
+    - utils 
 - Each example should be self-contained and runnable
 - Include clear documentation and comments, add a README.md
 - Add performance benchmarks where appropriate
