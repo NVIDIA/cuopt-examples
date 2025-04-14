@@ -15,7 +15,7 @@ WORKDIR /workspace
 COPY . /workspace/
 
 # Install Python packages
-RUN pip3 install --no-cache-dir -r /workspace/requirements.txt
+RUN pip3 install --no-cache-dir --quiet -r /workspace/requirements.txt
 
 # Expose Jupyter port
 EXPOSE 8888
