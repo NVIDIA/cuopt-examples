@@ -18,8 +18,8 @@ As contributors and maintainers to this project, you are expected to abide by th
 2. Find an issue to work on. The best way is to look for the `good first issue` or `help wanted` labels.
 3. Comment on the issue stating that you are going to work on it.
 4. Create a fork of the repository and check out a branch with a name that describes your planned work. For example, `add-new-workflow-example`.
-5. Write code to address the issue or implement the feature.
-6. Documentation.
+5. Write code to address the issue/upgrade an existing example/workflow or add a new example/workflow.
+6. Add documentation to the example/workflow, provide instructions for running the example/workflow, and add a README.md.
 7. Create your pull request.
 9. Wait for other developers to review your code and update code as needed.
 10. Once reviewed and approved, a team member will merge your pull request.
@@ -44,22 +44,7 @@ For detailed system requirements, please refer to the [NVIDIA cuOpt System Requi
 
 ### Create the build environment
 
-1. Clone the repository:
-```bash
-git clone https://github.com/NVIDIA/cuopt-examples.git
-cd cuopt-examples
-```
-
-2. Create and activate a conda environment:
-```bash
-conda create -n cuopt-dev python=3.10
-conda activate cuopt-dev
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+Follow the steps in the [README.md](README.md#running-the-examples) under "Running the Examples" to set-up docker environment
 
 ## Code Formatting
 
@@ -102,8 +87,6 @@ The following section describes some of the core pre-commit hooks used by the re
 - Python code is formatted with Black
 - Imports are sorted with isort
 - Code is checked with flake8
-- Type hints are checked with mypy
-- Spelling is checked with codespell
 
 ## Developer Guidelines
 
@@ -119,14 +102,15 @@ The following section describes some of the core pre-commit hooks used by the re
 ### Example and Workflow Guidelines
 
 - Each example should be self-contained and runnable
-- Include clear documentation and comments
+- Include clear documentation and comments, add a README.md
 - Add performance benchmarks where appropriate
 - Include error handling and edge cases
 - Provide example input data or instructions for generating test data
 - Add visualization of results where applicable
-- Follow the NVIDIA cuOpt service API best practices and guidelines
 - Include example configuration files for different use cases
 - Document any specific requirements or limitations
+- Add a requirements.txt file to the example/workflow directory which lists the dependencies for the example/workflow
+- All data files should be included in the example/workflow directory
 
 ### Notebook Guidelines
 
@@ -143,6 +127,4 @@ The following section describes some of the core pre-commit hooks used by the re
 - Include integration tests for workflows
 - Test edge cases and error conditions
 - Ensure tests are deterministic
-- Add performance tests for critical paths
 - Test with different input data sizes and configurations
-- Include API error handling tests
