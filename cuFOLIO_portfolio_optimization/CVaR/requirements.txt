@@ -1,0 +1,6 @@
+# Dependencies
+numpy>=1.24.4
+pandas>=2.2.1
+cvxpy>=1.6.5
+# Visualization
+seaborn>=0.13.2
