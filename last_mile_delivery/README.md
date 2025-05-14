@@ -39,6 +39,25 @@ The service team routing notebook (`cvrptw_service_team_routing.ipynb`) solves a
 - **Skill Matching**: Automatically matches technicians to services they're qualified to perform
 - **Visualization**: Includes visualization of optimized routes with respect to time constraints
 
+### 3. Benchmark Gehring & Homberger (CVRPTW)
+
+The benchmark notebook (`cvrptw_benchmark_gehring_homberger.ipynb`) demonstrates cuOpt's performance on large-scale academic benchmarks:
+
+- Solves the Capacitated Vehicle Routing Problem with Time Windows (CVRPTW) on a dataset of 1000 locations
+- Uses the well-known Gehring & Homberger benchmark problems, widely used for comparing VRP algorithms
+- Compares cuOpt solutions against best-known solutions from literature
+- Demonstrates cuOpt's ability to find high-quality solutions in reasonable time frames
+- Tests solution quality with different time limits (1 minute and 2 minutes)
+
+#### Key Features
+
+- **Large-Scale Optimization**: Handles a problem with 1000 locations and 250 vehicles
+- **Benchmarking**: Provides comparison metrics against best-known solutions
+- **Time Windows**: Incorporates service time windows constraints for all locations
+- **Capacity Constraints**: Handles vehicle capacity limitations
+- **Performance Focus**: Emphasizes cuOpt's ability to quickly produce high-quality solutions
+- **GPU Acceleration**: Demonstrates the benefits of GPU-accelerated optimization for large problem instances
+
 ## How to Use
 
 1. Ensure you have the required dependencies installed (see requirements.txt)
@@ -61,4 +80,5 @@ The notebooks output:
 These examples are particularly useful for:
 - Retailers and logistics companies looking to optimize their last-mile delivery operations
 - Field service organizations scheduling technicians with different skills
-- Any business that needs to schedule visits to customer locations while respecting time windows and capacity constraints 
+- Any business that needs to schedule visits to customer locations while respecting time windows and capacity constraints
+- Researchers and practitioners interested in benchmarking routing algorithms against standard problems 
