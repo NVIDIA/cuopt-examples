@@ -24,16 +24,3 @@ This notebook demonstrates leveraging cuFOLIO's GPU acceleration for optimizatio
 This notebook provides a framework for backtesting strategies, allowing users to analyze historical performance.
 3. [Advanced topics](03_advanced_topics.ipynb):
 This notebook contains advanced topics including portfolio rebalancing strategies to maintain optimal asset allocation.
-
-# Configure Host Networking
-Edit your `/etc/hosts` file to map the `cuopt` hostname to your host machine's IP address. This allows the PyTorch container to communicate with the cuOpt service.
-
-   ```bash
-   sudo nano /etc/hosts
-   ```
-
-   Add a line like this (replace the IP with your actual host IP):
-
-   ```
-   192.168.1.123    cuopt
-   ```
