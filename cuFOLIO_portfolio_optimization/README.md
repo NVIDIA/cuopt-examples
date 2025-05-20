@@ -6,6 +6,10 @@ Portfolio optimization is a key component of portfolio construction. The full wo
 
 ![cuFOLIO](./images/cufolio.png)
 
+## This is not google colab enabled
+
+This notebook has dependecies and data available locally and google colab would require users to move these files there and install them to run the notebook. So it is not out of the box google colab enabled.
+
 ## Portfolio Management and Optimization
 
 Effective portfolio management is fundamental for investment-focused institutions, including buy-side and sell-side operations across various asset classes. It involves the strategic creation, allocation, and management of financial asset portfolios, aiming to balance risk and return to achieve specific investment objectives. As financial markets become increasingly complex and diverse, the necessity for advanced portfolio optimization techniques and tools has grown correspondingly.
