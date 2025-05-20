@@ -44,19 +44,9 @@ docker pull nvidia/cuopt:25.05.*
 
 3. Run the examples:
 ```bash
-docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.05.* /bin/bash
+docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.05.* /bin/bash -c "pip install --user -r requirements.txt; jupyter-notebook"
 ```
-
-4. Install notebook requirements:
-```bash
-export PATH=/home/cuopt/.local/bin:$PATH
-pip install --user -r requirements.txt
-```
-5. Jun jupyter notebook:
-```bash
-jupyter-notebook
-```
-6. Open your browser with the link provided in the terminal, and you can see the notebooks.
+4. Open your browser with the link provided in the terminal, and you can see the notebooks.
 
 ## Repository Structure
 
@@ -64,7 +54,6 @@ The repository is organized by use cases, with each directory containing example
 - Example notebooks
 - Implementation files
 - README.md with specific instructions
-- requirements.txt for any additional dependencies that this notebook may require
 
 ## Featured Examples
 
