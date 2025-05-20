@@ -2,6 +2,10 @@
 
 This section demonstrates how to use NVIDIA cuOpt to solve last-mile delivery optimization problems. The notebooks focus on optimizing routes for delivery vehicles and service technicians to various locations.
 
+## Google Colab Enabled
+
+The notebooks are designed to be run in Google Colab. You would need to install cuopt wheels before running the notebooks, instructions are provided in the notebooks.
+
 ## Examples
 
 ### 1. Delivery Vehicle Routing (CVRP)
@@ -60,7 +64,7 @@ The benchmark notebook (`cvrptw_benchmark_gehring_homberger.ipynb`) demonstrates
 
 ## How to Use
 
-1. Ensure you have the required dependencies installed (see requirements.txt)
+1. Ensure you have the required dependencies installed, for google colab you might need to uncomment and install cuopt wheels based on your cuda version.
 2. Run the notebook cells in sequence
 3. The notebooks will:
    - Set up the problem data with locations and demands/service requirements
