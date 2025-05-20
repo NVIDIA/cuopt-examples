@@ -1,6 +1,6 @@
 # Intra-Factory Transport Optimization
 
-This notebook demonstrates how to use NVIDIA cuOpt to solve an intra-factory transport optimization problem using the cuOpt SDK API. The example focuses on optimizing the routes for Autonomous Mobile Robots (AMRs) within a factory environment.
+This notebook demonstrates how to use NVIDIA cuOpt to solve an intra-factory transport optimization problem using the cuOpt Python SDK API. The example focuses on optimizing the routes for Autonomous Mobile Robots (AMRs) within a factory environment.
 
 ## Problem Overview
 
@@ -20,9 +20,8 @@ The notebook solves a Capacitated Pickup and Delivery Problem with Time Windows 
 
 ## How to Use
 
-1. Ensure you have the required dependencies installed (see requirements.txt)
-2. Run the notebook cells in sequence
-3. The notebook will:
+1. Run the notebook cells in sequence
+2. The notebook will:
    - Set up the problem data structure
    - Configure transport orders and AMR fleet
    - Solve the optimization problem using the cuOpt SDK
