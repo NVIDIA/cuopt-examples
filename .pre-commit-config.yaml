@@ -9,7 +9,7 @@ repos:
       - id: isort
         # Use the config file specific to each subproject so that each
         # project can specify its own first/third-party packages.
-        args: ["--config-root=python/", "--resolve-all-configs"]
+        args: ["--resolve-all-configs"]
         files: ^(.*)
         types_or: [python, cython, pyi]
   - repo: https://github.com/psf/black
@@ -26,7 +26,7 @@ repos:
         args: ["--config=.flake8"]
         files: .*$
         types: [file]
-        types_or: [python, cython]
+        types_or: [python]
         additional_dependencies: ["flake8-force"]
 default_language_version:
       python: python3

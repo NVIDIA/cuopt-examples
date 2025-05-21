@@ -6,6 +6,11 @@ Portfolio optimization is a key component of portfolio construction. The full wo
 
 ![cuFOLIO](./images/cufolio.png)
 
+## Platform Compatibility
+
+If you are running on a platform where cuOpt is not installed, please un-comment the installation cell in the notebook for cuopt.
+You might need to tweak the notebook to install additional local dependencies on few platforms where directory structure is not pulled from github and just the notebook is uploaded.
+
 ## Portfolio Management and Optimization
 
 Effective portfolio management is fundamental for investment-focused institutions, including buy-side and sell-side operations across various asset classes. It involves the strategic creation, allocation, and management of financial asset portfolios, aiming to balance risk and return to achieve specific investment objectives. As financial markets become increasingly complex and diverse, the necessity for advanced portfolio optimization techniques and tools has grown correspondingly.

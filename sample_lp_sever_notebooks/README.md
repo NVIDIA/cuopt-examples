@@ -4,6 +4,10 @@ This section demonstrates how to use NVIDIA cuOpt to solve math optimization pro
 
 Note: you must have the cuOpt service running at localhost:5000 
 
+## Platform Compatibility
+
+If you are running on a platform where cuOpt is not installed, please un-comment the installation cell in the notebook for cuopt.
+
 ## Examples
 
 ### 1. Linear Programming

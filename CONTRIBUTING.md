@@ -44,7 +44,7 @@ For detailed system requirements, please refer to the [NVIDIA cuOpt System Requi
 
 ### Create the build environment
 
-Follow the steps in the [README.md](README.md#running-the-examples) under "Running the Examples" to set-up docker environment
+Follow the steps in the [README.md](README.md#running-the-examples) under "Running the Examples" to pull the cuOpt docker image and run the examples.
 
 ## Code Formatting
 
@@ -102,10 +102,10 @@ The following section describes some of the core pre-commit hooks used by the re
 ### Example and Workflow Guidelines
 - Structure to follow:
     - README.md
-    - requirements.txt
     - notebooks.ipynb
-    - data/
-    - utils 
+    - Optional: data (Try to add fetching data logic within the notebook itself)
+    - Optional: requirements.txt (If possible add all dependencies within the notebook itself)
+    - Optional: utils (Try to add utility functions within the notebook itself)
 - Each example should be self-contained and runnable
 - Include clear documentation and comments, add a README.md
 - Add performance benchmarks where appropriate
@@ -119,6 +119,8 @@ The following section describes some of the core pre-commit hooks used by the re
 
 ### Notebook Guidelines
 
+- Add all dependencies of the notebooks within notebook iteself if possible so it is self-contained. Else create a requirements.txt file in the same directory as the notebook and install the dependencies using `!pip install -q -r requirements.txt` in the notebook.
+- Try to implement the additional utility functions within the notebook itself, so you wouldn't need to load them from another local module. This makes it easier to run in places where you do not have direct access to the host.
 - Use Jupyter notebooks for interactive examples
 - Include markdown cells with clear explanations
 - Add code comments for complex operations
