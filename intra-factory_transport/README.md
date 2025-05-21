@@ -2,9 +2,9 @@
 
 This notebook demonstrates how to use NVIDIA cuOpt to solve an intra-factory transport optimization problem using the cuOpt Python SDK API. The example focuses on optimizing the routes for Autonomous Mobile Robots (AMRs) within a factory environment.
 
-## Google Colab Enabled
+## Platform Compatibility
 
-The notebooks are designed to be run in Google Colab. You would need to install cuopt packages before running the notebooks, instructions are provided in the notebooks.
+If you are running on a platform where cuOpt is not installed, please un-comment the installation cell in the notebook for cuopt.
 
 ## Problem Overview
 

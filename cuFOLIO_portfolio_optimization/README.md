@@ -6,9 +6,10 @@ Portfolio optimization is a key component of portfolio construction. The full wo
 
 ![cuFOLIO](./images/cufolio.png)
 
-## This is not google colab enabled
+## Platform Compatibility
 
-This notebook has dependecies and data available locally and google colab would require users to move these files there and install them to run the notebook. So it is not out of the box google colab enabled.
+If you are running on a platform where cuOpt is not installed, please un-comment the installation cell in the notebook for cuopt.
+You might need to tweak the notebook to install additional local dependencies on few platforms where directory structure is not pulled from github and just the notebook is uploaded.
 
 ## Portfolio Management and Optimization
 

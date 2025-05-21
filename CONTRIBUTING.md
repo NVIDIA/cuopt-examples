@@ -120,7 +120,7 @@ The following section describes some of the core pre-commit hooks used by the re
 ### Notebook Guidelines
 
 - Add all dependencies of the notebooks within notebook iteself if possible so it is self-contained. Else create a requirements.txt file in the same directory as the notebook and install the dependencies using `!pip install -q -r requirements.txt` in the notebook.
-- Try to implement the additional utility functions within the notebook itself, so you wouldn't need to load them from another local module. This makes it easier to run in places like Google Colab.
+- Try to implement the additional utility functions within the notebook itself, so you wouldn't need to load them from another local module. This makes it easier to run in places where you do not have direct access to the host.
 - Use Jupyter notebooks for interactive examples
 - Include markdown cells with clear explanations
 - Add code comments for complex operations

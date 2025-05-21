@@ -22,14 +22,6 @@ For detailed system requirements, please refer to the [NVIDIA cuOpt System Requi
 
 Specific requirements are listed in each workflow's README.md and in the root directory's requirements.txt files.
 
-## Google Colab Enabled
-
-Most of these notebooks are Google Colab enabled. You would need to install cuopt packages before running the notebooks, instructions are provided in the notebooks.
-Please refer to the README.md of each notebook for more details whether it is Google Colab enabled or not.
-
-To use these on google colab, you can load notebooks from this [repository directly in google colab](https://colab.research.google.com/github/googlecolab/colabtools/blob/master/notebooks/colab-github-demo.ipynb). 
-
-
 ### Running the Examples
 1. Clone this repository:
 ```bash
@@ -48,11 +40,16 @@ docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace
 ```
 4. Open your browser with the link provided in the terminal, and you can see the notebooks.
 
+
+## Note
+
+These notebooks have been tested on NVIDIA Brev, Google Colab, and local Jupyter environments. They may work on other platforms as well.
+
+
 ## Repository Structure
 
 The repository is organized by use cases, with each directory containing examples and implementations specific to that use case. Each use case directory includes:
 - Example notebooks
-- Implementation files
 - README.md with specific instructions
 
 ## Featured Examples
