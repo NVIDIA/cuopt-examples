@@ -21,6 +21,8 @@ GPU-accelerated solutions allow financial institutions to navigate the complexit
 
 cuFOLIO utilizes [NVIDIA cuOpt](https://www.nvidia.com/en-us/ai-data-science/products/cuopt/), a GPU-accelerated solver for decision optimization.
 
+[cuOpt API Support](http://10.20.105.53:8001/introduction.html#api-supports): cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest users use a third-party modeling language or the cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
+
 ## Optimization Methods
 
 The current implementation of cuFOLIO supports [Conditional Value-at-Risk (CVaR)](CVaR/) as the risk measure, with support for mean-variance optimization planned for future development.
