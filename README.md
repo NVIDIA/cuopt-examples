@@ -8,12 +8,13 @@ The cuOpt-Resources repository is under [MIT License](LICENSE.md)
 
 ## Quick Start with Docker
 
-The easiest way to get started with these examples is using the included Docker container, which comes with all the necessary dependencies pre-installed.
+The easiest way to get started with these examples is using cuOpt docker image.
 
 ### Prerequisites
 - [Docker](https://docs.nvidia.com/ai-enterprise/deployment/vmware/latest/docker.html)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#installing-the-nvidia-container-toolkit)
 - NVIDIA GPU with appropriate drivers
+
 
 ## Requirements
 
@@ -28,20 +29,28 @@ git clone https://github.com/NVIDIA/cuopt-examples.git
 cd cuopt-examples
 ```
 
-2. Start the Jupyter notebook environment:
+2. Pull the cuOpt docker image:
 ```bash
-docker-compose up
+docker pull nvidia/cuopt:25.05.*
 ```
 
-3. Open your browser at http://localhost:8888 to access the notebooks
+3. Run the examples:
+```bash
+docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.05.* /bin/bash -c "pip install --user -r requirements.txt; jupyter-notebook"
+```
+4. Open your browser with the link provided in the terminal, and you can see the notebooks.
+
+
+## Note
+
+These notebooks have been tested on NVIDIA Brev, Google Colab, and local Jupyter environments. They may work on other platforms as well.
+
 
 ## Repository Structure
 
 The repository is organized by use cases, with each directory containing examples and implementations specific to that use case. Each use case directory includes:
 - Example notebooks
-- Implementation files
 - README.md with specific instructions
-- requirements.txt for any additional dependencies that this notebook may require
 
 ## Featured Examples
 
