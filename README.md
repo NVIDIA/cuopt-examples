@@ -43,7 +43,7 @@ docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace
 
 ## Note
 
-These notebooks have been tested on NVIDIA Brev, Google Colab, and local Jupyter environments. They may work on other platforms as well.
+These notebooks have been tested on [NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ), [Google Colab](https://colab.research.google.com/github/nvidia/cuopt-examples/), and local Jupyter environments. They may work on other platforms as well.
 
 
 ## Repository Structure
