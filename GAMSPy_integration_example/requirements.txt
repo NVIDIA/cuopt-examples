@@ -1,5 +1,0 @@
-cuopt-cu12==25.5.*
-nvidia-cuda-runtime-cu12==12.8.*
-nvidia-nvjitlink-cu12
-gamspy
-jupyter
