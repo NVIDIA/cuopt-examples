@@ -31,7 +31,7 @@ cd cuopt-examples
 
 2. Pull the cuOpt docker image:
 ```bash
-docker pull nvidia/cuopt:25.05.*
+docker pull nvidia/cuopt:25.10.*
 ```
 
 3. Run the examples:
