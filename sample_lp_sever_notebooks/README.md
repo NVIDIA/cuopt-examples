@@ -2,8 +2,6 @@
 
 This section demonstrates how to use NVIDIA cuOpt to solve math optimization problems. The notebooks solve simple LP and MILP problems using the cuOpt service and a local client to submit problems and receive results.
 
-Note: you must have the cuOpt service running at localhost:5000 
-
 ## Platform Compatibility
 
 If you are running on a platform where cuOpt is not installed, please un-comment the installation cell in the notebook for cuopt.
