@@ -1,0 +1,23 @@
+{
+  "csr_constraint_matrix": {
+    "offsets": [0, 2, 4],
+    "indices": [0, 1, 0, 1],
+    "values": [3.0, 4.0, 2.7, 10.1]
+  },
+  "objective_data": {
+    "coefficients": [-0.2, 0.1],
+    "scalability_factor": 1.0,
+    "offset": 0.0
+  },
+  "constraint_bounds": {
+    "upper_bounds": [5.4, 4.9],
+    "lower_bounds": ["ninf", "ninf"] 
+  },
+  "variable_bounds": {
+    "upper_bounds": ["inf", "inf"],
+    "lower_bounds": [0.0, 0.0]
+  },
+  "maximize": false,
+  "variable_types": ["C", "C"],
+  "variable_names": ["x1", "x2"]
+} 
