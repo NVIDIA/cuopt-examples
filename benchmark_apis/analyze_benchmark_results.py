@@ -190,7 +190,8 @@ def format_solver_name(name: str) -> str:
         'cuopt_json_to_cvxpy': 'CVXPY',
         'cuopt_json_to_pulp': 'PuLP',
         'cuopt_json_to_ampl': 'AMPL',
-        'cuopt_json_to_julia': 'Julia'
+        'cuopt_json_to_julia': 'Julia',
+        'cuopt_json_to_gams': 'GAMS'
     }
     
     # If we have a known mapping, use it
@@ -371,6 +372,59 @@ def print_summary_table(analyses: List[Dict], solver_names: List[str]):
         
         print(f"{filename:<20} {fastest:<12} {obj_ok:<7} {solver_dev:<11} {time_diff_str:<60}")
 
+def print_failure_analysis(analyses: List[Dict], solver_names: List[str]):
+    """Print detailed analysis of solver failures."""
+    
+    if not analyses:
+        return
+    
+    print(f"\nFAILURE ANALYSIS")
+    print("=" * 70)
+    
+    # Collect failure statistics for each solver
+    solver_failures = {solver: [] for solver in solver_names}
+    total_problems = len(analyses)
+    
+    for analysis in analyses:
+        for solver in solver_names:
+            if solver in analysis['failed_solvers']:
+                solver_failures[solver].append(analysis['filename'])
+    
+    # Check if any failures occurred
+    any_failures = any(len(failures) > 0 for failures in solver_failures.values())
+    
+    if not any_failures:
+        print("✅ No solver failures detected - all solvers succeeded on all problems!")
+        return
+    
+    print("SOLVER FAILURE SUMMARY:")
+    print("-" * 50)
+    
+    # Sort solvers by failure count for better readability
+    solvers_by_failures = sorted(solver_names, key=lambda s: len(solver_failures[s]), reverse=True)
+    
+    for solver in solvers_by_failures:
+        failure_count = len(solver_failures[solver])
+        success_count = total_problems - failure_count
+        success_rate = (success_count / total_problems) * 100
+        
+        if failure_count == 0:
+            print(f"{format_solver_name(solver):<15}: ✅ {success_count}/{total_problems} successes ({success_rate:.1f}%)")
+        else:
+            print(f"{format_solver_name(solver):<15}: ❌ {failure_count}/{total_problems} failures ({success_rate:.1f}% success rate)")
+    
+    # Detail failed problems for each solver that had failures
+    print(f"\nDETAILED FAILURE BREAKDOWN:")
+    print("-" * 50)
+    
+    for solver in solvers_by_failures:
+        failures = solver_failures[solver]
+        if failures:
+            print(f"\n{format_solver_name(solver)} failed on {len(failures)} problem(s):")
+            # Sort filenames for consistent output
+            for filename in sorted(failures):
+                print(f"  - {filename}")
+
 def calculate_overall_stats(analyses: List[Dict], solver_names: List[str]):
     """Calculate and print overall statistics."""
     
@@ -523,6 +577,7 @@ of the primary metric.
     # Print results
     print_detailed_analysis(analyses, solver_names, args.show_failed)
     print_summary_table(analyses, solver_names)
+    print_failure_analysis(analyses, solver_names)
     calculate_overall_stats(analyses, solver_names)
     
     print(f"\nAnalyzed {len(analyses)} problems from {args.csv_file}")

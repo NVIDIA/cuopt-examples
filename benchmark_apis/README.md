@@ -14,6 +14,7 @@ Install cuOpt by following the instructions at [github.com/NVIDIA/cuopt](https:/
 - **CVXPY**: [https://www.cvxpy.org/install/index.html](https://www.cvxpy.org/install/index.html)
 - **AMPL**: [https://dev.ampl.com/solvers/cuopt/index.html](https://dev.ampl.com/solvers/cuopt/index.html)
 - **PuLP**: [https://coin-or.github.io/pulp/main/installing_pulp_at_home.html](https://coin-or.github.io/pulp/main/installing_pulp_at_home.html)
+- **GAMS**: [https://www.gams.com/download/](https://www.gams.com/download/), [https://gamspy.readthedocs.io/en/latest/user/installation.html](https://gamspy.readthedocs.io/en/latest/user/installation.html), and the GAMS/cuOpt link from [https://github.com/GAMS-dev/cuoptlink-builder](https://github.com/GAMS-dev/cuoptlink-builder)
 - **Julia**: 
   - [https://julialang.org/install/](https://julialang.org/install/)
   - [https://jump.dev/JuMP.jl/stable/installation/](https://jump.dev/JuMP.jl/stable/installation/)

@@ -20,10 +20,11 @@ Benchmark script for cuOpt programs.
 This script runs different cuOpt programs on JSON files in a specified directory:
 1. ./cuopt_json_to_c_api
 2. python cuopt_json_to_api2.py 
-3. python cuopt_json_to_cvxpy.py
+3. python cuopt_json_to_cvxpy.py --solver_verbose
 4. python cuopt_json_to_pulp.py --quiet
 5. python cuopt_json_to_ampl.py --quiet
 6. ./cuopt_json_to_julia.jl
+7. python cuopt_json_to_gams.py
 
 For each program and file combination, it extracts:
 - Objective value
@@ -231,6 +232,38 @@ def parse_cuopt_julia_output(stdout: str) -> Tuple[Optional[float], Optional[flo
     
     return objective, solver_time
 
+def parse_cuopt_gams_output(stdout: str) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Parse output from cuopt_json_to_gams.py to extract objective value and solver time.
+    
+    Expected patterns:
+    - Optimal objective value: -464.75314285714285
+    - Solver timing information from GAMS/cuOpt solver output
+    - May also handle single-line cuOpt format: Status: Optimal   Objective: -4.64753143e+02  Iterations: 15  Time: 0.019s
+    """
+    objective = None
+    solver_time = None
+    
+    # Look for objective value - try both "Optimal objective value:" and "Objective:" patterns
+    obj_match = re.search(r'Optimal objective value:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', stdout)
+    if not obj_match:
+        obj_match = re.search(r'Objective:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', stdout)
+    if obj_match:
+        objective = float(obj_match.group(1))
+    
+    # Look for solver time - handle cuOpt solver output from GAMS
+    # First try single-line cuOpt format with 's' suffix
+    status_time_match = re.search(r'Status:\s+\w+.*?Time:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)s', stdout)
+    if status_time_match:
+        solver_time = float(status_time_match.group(1))
+    else:
+        # Try generic time patterns without 's' suffix
+        time_match = re.search(r'Time:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', stdout)
+        if time_match:
+            solver_time = float(time_match.group(1))
+    
+    return objective, solver_time
+
 def benchmark_file(json_file_path: str, selected_solvers: List[Dict]) -> Dict[str, Dict[str, Optional[float]]]:
     """
     Run selected solver programs on a JSON file and return results.
@@ -350,8 +383,8 @@ Examples:
   python benchmark_cuopt.py ../test_problems   # Use JSON files from relative path
   python benchmark_cuopt.py lp/ -f small_files.txt  # Use files from lp/ but only those listed in small_files.txt
 
-Note: The cuOpt programs (cuopt_json_to_c_api, cuopt_json_to_python_api.py, cuopt_json_to_cvxpy.py, etc.) 
-must be present in the directory where this script is run from.
+Note: The cuOpt programs (cuopt_json_to_c_api, cuopt_json_to_python_api.py, cuopt_json_to_cvxpy.py, 
+cuopt_json_to_gams.py, etc.) must be present in the directory where this script is run from.
 
 The CSV results file is updated after each file is processed, so you can monitor 
 progress in real-time using: tail -f cuopt_benchmark_results.csv
@@ -371,8 +404,8 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
     parser.add_argument(
         '--solvers',
         type=str,
-        default='C,python,cvxpy,pulp,ampl,julia',
-        help='Comma-separated list of solvers to run. Options: C (cuopt_json_to_c_api), python (cuopt_json_to_python_api.py), cvxpy (cuopt_json_to_cvxpy.py), pulp (cuopt_json_to_pulp.py), ampl (cuopt_json_to_ampl.py), julia (cuopt_json_to_julia.jl). Default: C,python,cvxpy,pulp,ampl,julia'
+        default='C,python,cvxpy,pulp,ampl,julia,gams',
+        help='Comma-separated list of solvers to run. Options: C (cuopt_json_to_c_api), python (cuopt_json_to_python_api.py), cvxpy (cuopt_json_to_cvxpy.py), pulp (cuopt_json_to_pulp.py), ampl (cuopt_json_to_ampl.py), julia (cuopt_json_to_julia.jl), gams (cuopt_json_to_gams.py). Default: C,python,cvxpy,pulp,ampl,julia,gams'
     )
     
     args = parser.parse_args()
@@ -393,7 +426,7 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
         },
         'cvxpy': {
             'name': 'cuopt_json_to_cvxpy',
-            'command': ['python', 'cuopt_json_to_cvxpy.py'],
+            'command': ['python', 'cuopt_json_to_cvxpy.py', '--solver_verbose'],
             'file_check': 'cuopt_json_to_cvxpy.py',
             'parser': 'parse_cuopt_json_to_cvxpy_output'
         },
@@ -414,6 +447,12 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
             'command': ['./cuopt_json_to_julia.jl'],
             'file_check': 'cuopt_json_to_julia.jl',
             'parser': 'parse_cuopt_julia_output'
+        },
+        'gams': {
+            'name': 'cuopt_json_to_gams',
+            'command': ['python', 'cuopt_json_to_gams.py'],
+            'file_check': 'cuopt_json_to_gams.py',
+            'parser': 'parse_cuopt_gams_output'
         }
     }
     
