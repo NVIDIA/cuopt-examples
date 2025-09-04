@@ -3,6 +3,8 @@ import sys
 import gamspy as gp
 import numpy as np
 from scipy.sparse import csr_matrix
+import time
+import argparse
 
 def read_cuopt_json(filename):
     """Read and parse the cuopt JSON file."""
@@ -38,9 +40,16 @@ def convert_bounds(bounds_list):
             converted.append(float(bound))
     return converted
 
-def solve_cuopt_problem(json_filename):
+def solve_cuopt_problem(json_filename, timing=False):
     """Main function to solve cuopt JSON problem using gamspy."""
     
+    # Start overall timing  
+    total_start_time = time.time()
+    if timing:
+        print(f"🕐 [T+{0.000:.3f}s] Starting cuOpt GAMS solver...")
+    
+    # Phase 1: GAMS Setup
+    setup_start = time.time()
     # Set up GAMS environment (from transport.py)
     # Set log level 4 globally (log to both file and stdout)  
     gp.set_options({
@@ -49,6 +58,8 @@ def solve_cuopt_problem(json_filename):
     
     # Create container with GAMS system directory
     m = gp.Container(system_directory="/home/tmckay/gams/gams50.4_linux_x64_64_sfx/")
+    setup_time = time.time() - setup_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] GAMS setup completed ({setup_time:.3f}s)")
     
     # Example: Set cuopt solver options
     # You can create and use a cuopt option file
@@ -69,11 +80,16 @@ def solve_cuopt_problem(json_filename):
 #        for option, value in cuopt_options.items():
 #            f.write(f"{option} = {value}\n")
     
-    # Read and parse the JSON data
-    print(f"Reading cuopt problem from {json_filename}...")
+    # Phase 2: File Reading and JSON Parsing
+    read_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Reading cuopt problem from {json_filename}...")
     data = read_cuopt_json(json_filename)
+    read_time = time.time() - read_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] JSON file read completed ({read_time:.3f}s)")
     
-    # Parse the constraint matrix
+    # Phase 3: Matrix Parsing and Data Preprocessing
+    matrix_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Parsing constraint matrix...")
     A = parse_csr_matrix(data["csr_constraint_matrix"])
     
     # Get problem data
@@ -84,9 +100,15 @@ def solve_cuopt_problem(json_filename):
     obj_coeffs = data["objective_data"]["coefficients"]
     maximize = data["maximize"]
     
+    matrix_time = time.time() - matrix_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Matrix parsing completed ({matrix_time:.3f}s)")
     print(f"Problem dimensions: {A.shape[0]} constraints, {A.shape[1]} variables")
     print(f"Constraint matrix non-zeros: {A.nnz}")
     print(f"Objective coefficients range: [{min(obj_coeffs):.3f}, {max(obj_coeffs):.3f}]")
+    
+    # Phase 4: Bounds Processing
+    bounds_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Processing bounds...")
     
     # Variable bounds
     var_lower = convert_bounds(data["variable_bounds"]["lower_bounds"])
@@ -108,14 +130,27 @@ def solve_cuopt_problem(json_filename):
     upper_mask = (upper_bounds != np.inf) & ~equality_mask
     lower_mask = (lower_bounds != -np.inf) & ~equality_mask
     
+    bounds_time = time.time() - bounds_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Bounds processing completed ({bounds_time:.3f}s)")
     print(f"Constraint analysis (matching cuopt_json_to_api2.py):")
     print(f"  - Equality constraints: {np.sum(equality_mask)}")
     print(f"  - Upper bound constraints: {np.sum(upper_mask)}")
     print(f"  - Lower bound constraints: {np.sum(lower_mask)}")
     
+    # Phase 5: GAMS Sets Creation
+    sets_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating GAMS sets...")
+    
     # Create gamspy sets for variables and constraints  
     var_set = gp.Set(m, name="vars", records=[f"x{i}" for i in range(num_variables)])
     con_set = gp.Set(m, name="cons", records=[f"c{i}" for i in range(num_constraints)])
+    
+    sets_time = time.time() - sets_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] GAMS sets created ({sets_time:.3f}s)")
+    
+    # Phase 6: Parameter Creation
+    params_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating GAMS parameters...")
     
     # Create variable bounds parameters
     var_lb_data = [(f"x{i}", var_lower[i]) for i in range(num_variables)]
@@ -124,15 +159,30 @@ def solve_cuopt_problem(json_filename):
     var_lb_param = gp.Parameter(m, name="var_lb", domain=[var_set], records=var_lb_data)
     var_ub_param = gp.Parameter(m, name="var_ub", domain=[var_set], records=var_ub_data)
     
-    # Create constraint matrix parameter
-    matrix_data = []
+    # Create constraint matrix parameter (POTENTIAL BOTTLENECK)
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Converting sparse matrix to dense format...")
+    matrix_data_start = time.time()
+    
+    # Convert sparse matrix to dense - this could be slow for large matrices
     A_dense = A.toarray()
+    dense_conversion_time = time.time() - matrix_data_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Dense conversion completed ({dense_conversion_time:.3f}s)")
+    
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Building matrix parameter data...")
+    matrix_data = []
     for i in range(num_constraints):
         for j in range(num_variables):
             if abs(A_dense[i, j]) > 1e-10:  # Only include non-zero elements
                 matrix_data.append((f"c{i}", f"x{j}", A_dense[i, j]))
     
+    matrix_build_time = time.time() - matrix_data_start - dense_conversion_time
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Matrix data built, {len(matrix_data)} non-zeros ({matrix_build_time:.3f}s)")
+    
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating GAMS matrix parameter...")
+    matrix_param_start = time.time()
     A_param = gp.Parameter(m, name="A", domain=[con_set, var_set], records=matrix_data)
+    matrix_param_time = time.time() - matrix_param_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] GAMS matrix parameter created ({matrix_param_time:.3f}s)")
     
     # We'll create constraint parameters dynamically based on constraint types
     # No need for separate RHS parameter since we use bounds directly
@@ -141,6 +191,13 @@ def solve_cuopt_problem(json_filename):
     obj_data = [(f"x{i}", obj_coeffs[i]) for i in range(num_variables)]
     obj_param = gp.Parameter(m, name="obj_coeff", domain=[var_set], records=obj_data)
     
+    params_time = time.time() - params_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] All parameters created ({params_time:.3f}s)")
+    
+    # Phase 7: Variable Creation
+    vars_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating GAMS variables...")
+    
     # Define variables with bounds
     x = gp.Variable(m, name="x", domain=[var_set], type="Free")
     
@@ -148,54 +205,123 @@ def solve_cuopt_problem(json_filename):
     x.lo[var_set] = var_lb_param[var_set]
     x.up[var_set] = var_ub_param[var_set]
     
-    # Create constraint equations using the same logic as cuopt_json_to_api2.py
-    # We create separate constraint lists for different types
-    equality_constraints = []
-    upper_constraints = []
-    lower_constraints = []
+    vars_time = time.time() - vars_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Variables created ({vars_time:.3f}s)")
     
-    # Create constraints based on bounds analysis (matching cuopt_json_to_api2.py logic)
-    for i in range(num_constraints):
-        con_name = f"c{i}"
-        
-        # Build constraint expression: sum of A[i,j] * x[j] 
-        lhs_expr = gp.Sum(var_set, A_param[con_name, var_set] * x[var_set])
-        
-        if equality_mask[i]:
-            # Equality constraint: expr == lower_bounds[i] (same as upper_bounds[i])
-            eq_constraint = gp.Equation(m, name=f"eq_constraint_{i}", domain=[])
-            eq_constraint[...] = lhs_expr == lower_bounds[i]
-            equality_constraints.append(eq_constraint)
-        else:
-            # Add upper bound constraint if finite upper bound
-            if upper_mask[i]:
-                up_constraint = gp.Equation(m, name=f"up_constraint_{i}", domain=[])
-                up_constraint[...] = lhs_expr <= upper_bounds[i]
-                upper_constraints.append(up_constraint)
-            
-            # Add lower bound constraint if finite lower bound
-            if lower_mask[i]:
-                low_constraint = gp.Equation(m, name=f"low_constraint_{i}", domain=[])
-                low_constraint[...] = lhs_expr >= lower_bounds[i]
-                lower_constraints.append(low_constraint)
+    # Phase 8: Optimized Batch Constraint Creation (Fixed Domain Issues)
+    constraints_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating constraint equations (OPTIMIZED BATCH MODE v2)...")
     
-    # Combine all constraints for the model
-    all_constraints = equality_constraints + upper_constraints + lower_constraints
-    print(f"Total constraint equations created: {len(all_constraints)}")
+    # Create constraint type sets for batch operations
+    eq_indices = [i for i in range(num_constraints) if equality_mask[i]]
+    up_indices = [i for i in range(num_constraints) if not equality_mask[i] and upper_mask[i]]
+    low_indices = [i for i in range(num_constraints) if not equality_mask[i] and lower_mask[i]]
+    
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Constraint groups: {len(eq_indices)} equality, {len(up_indices)} upper, {len(low_indices)} lower")
+    
+    all_constraints = []
+    
+    # OPTIMIZATION 1: Batch create equality constraints using conditional sum
+    if eq_indices:
+        eq_batch_start = time.time()
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating {len(eq_indices)} equality constraints...")
+        
+        # Create binary parameter to identify equality constraints
+        eq_mask_data = [(f"c{i}", 1 if i in eq_indices else 0) for i in range(num_constraints)]
+        eq_mask_param = gp.Parameter(m, name="eq_mask", domain=[con_set], records=eq_mask_data)
+        
+        # Create parameter for equality RHS values (0 for non-equality constraints)
+        eq_rhs_data = [(f"c{i}", lower_bounds[i] if i in eq_indices else 0) for i in range(num_constraints)]
+        eq_rhs_param = gp.Parameter(m, name="eq_rhs", domain=[con_set], records=eq_rhs_data)
+        
+        # Create batch equality constraints using conditional
+        eq_constraints = gp.Equation(m, name="eq_constraints", domain=[con_set])
+        eq_constraints[con_set].where[eq_mask_param[con_set] == 1] = (
+            gp.Sum(var_set, A_param[con_set, var_set] * x[var_set]) == eq_rhs_param[con_set]
+        )
+        all_constraints.append(eq_constraints)
+        
+        eq_batch_time = time.time() - eq_batch_start
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Equality constraints created ({eq_batch_time:.3f}s)")
+    
+    # OPTIMIZATION 2: Batch create upper bound constraints
+    if up_indices:
+        up_batch_start = time.time()
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating {len(up_indices)} upper bound constraints...")
+        
+        # Create binary parameter to identify upper bound constraints
+        up_mask_data = [(f"c{i}", 1 if i in up_indices else 0) for i in range(num_constraints)]
+        up_mask_param = gp.Parameter(m, name="up_mask", domain=[con_set], records=up_mask_data)
+        
+        # Create parameter for upper bound RHS values
+        up_rhs_data = [(f"c{i}", upper_bounds[i] if i in up_indices else 0) for i in range(num_constraints)]
+        up_rhs_param = gp.Parameter(m, name="up_rhs", domain=[con_set], records=up_rhs_data)
+        
+        # Create batch upper bound constraints using conditional
+        up_constraints = gp.Equation(m, name="up_constraints", domain=[con_set])
+        up_constraints[con_set].where[up_mask_param[con_set] == 1] = (
+            gp.Sum(var_set, A_param[con_set, var_set] * x[var_set]) <= up_rhs_param[con_set]
+        )
+        all_constraints.append(up_constraints)
+        
+        up_batch_time = time.time() - up_batch_start
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Upper bound constraints created ({up_batch_time:.3f}s)")
+    
+    # OPTIMIZATION 3: Batch create lower bound constraints  
+    if low_indices:
+        low_batch_start = time.time()
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating {len(low_indices)} lower bound constraints...")
+        
+        # Create binary parameter to identify lower bound constraints
+        low_mask_data = [(f"c{i}", 1 if i in low_indices else 0) for i in range(num_constraints)]
+        low_mask_param = gp.Parameter(m, name="low_mask", domain=[con_set], records=low_mask_data)
+        
+        # Create parameter for lower bound RHS values
+        low_rhs_data = [(f"c{i}", lower_bounds[i] if i in low_indices else 0) for i in range(num_constraints)]
+        low_rhs_param = gp.Parameter(m, name="low_rhs", domain=[con_set], records=low_rhs_data)
+        
+        # Create batch lower bound constraints using conditional
+        low_constraints = gp.Equation(m, name="low_constraints", domain=[con_set])
+        low_constraints[con_set].where[low_mask_param[con_set] == 1] = (
+            gp.Sum(var_set, A_param[con_set, var_set] * x[var_set]) >= low_rhs_param[con_set]
+        )
+        all_constraints.append(low_constraints)
+        
+        low_batch_time = time.time() - low_batch_start
+        if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Lower bound constraints created ({low_batch_time:.3f}s)")
+    
+    constraints_time = time.time() - constraints_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] OPTIMIZED constraint equations created ({constraints_time:.3f}s)")
+    print(f"Total constraint groups created: {len(all_constraints)} (instead of {num_constraints} individual)")
     print(f"Variable bounds: lower=[{min(var_lower):.3f}, {max(var_lower):.3f}], upper=[{min(var_upper):.3f}, {max(var_upper):.3f}]")
+    
+    # Phase 9: Model Creation and Objective
+    model_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Creating model and objective...")
     
     # Define objective function
     objective_expr = gp.Sum(var_set, obj_param[var_set] * x[var_set])
     objective_expr += data["objective_data"]["offset"]  # Add offset if present
     
-    # Create and solve the model
+    # Create the model
     sense = gp.Sense.MAX if maximize else gp.Sense.MIN
     model = gp.Model(m, name="cuopt_problem", equations=all_constraints,
                      problem="LP", sense=sense, objective=objective_expr)
     
-    print(f"Solving {'maximization' if maximize else 'minimization'} problem with cuopt solver...")
+    model_time = time.time() - model_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Model created ({model_time:.3f}s)")
+    
+    # Phase 10: Solving (THE CRITICAL PHASE)
+    solve_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Solving {'maximization' if maximize else 'minimization'} problem with cuopt solver...")
     # Solve with cuopt solver (optfile is set globally via environment variable)
     model.solve("cuopt", output=sys.stdout)
+    solve_time = time.time() - solve_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Solving completed ({solve_time:.3f}s)")
+    
+    # Phase 11: Result Extraction
+    results_start = time.time()
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Extracting results...")
     
     # Display results
     print(f"\nOptimal objective value: {model.objective_value}")
@@ -218,6 +344,9 @@ def solve_cuopt_problem(json_filename):
             print("No variable values available")
     except Exception as e:
         print(f"Error retrieving variable values: {e}")
+    
+    results_time = time.time() - results_start
+    if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Results extracted ({results_time:.3f}s)")
         
     # Show model statistics
     print(f"\nModel Statistics:")
@@ -230,27 +359,94 @@ def solve_cuopt_problem(json_filename):
         print(f"\nWarning: Model status is {model.status}")
         print("This may indicate an issue with the problem formulation or solver configuration.")
     
+    # Final Timing Summary (conditional on quiet flag)
+    total_time = time.time() - total_start_time
+    if timing:
+        print(f"\n" + "="*80)
+        print(f"TIMING SUMMARY - Total Time: {total_time:.3f}s")
+        print(f"="*80)
+        print(f"Phase 1  - GAMS Setup:        {setup_time:8.3f}s ({setup_time/total_time*100:5.1f}%)")
+        print(f"Phase 2  - JSON Reading:      {read_time:8.3f}s ({read_time/total_time*100:5.1f}%)")
+        print(f"Phase 3  - Matrix Parsing:    {matrix_time:8.3f}s ({matrix_time/total_time*100:5.1f}%)")
+        print(f"Phase 4  - Bounds Processing: {bounds_time:8.3f}s ({bounds_time/total_time*100:5.1f}%)")
+        print(f"Phase 5  - GAMS Sets:         {sets_time:8.3f}s ({sets_time/total_time*100:5.1f}%)")
+        print(f"Phase 6  - Parameters:        {params_time:8.3f}s ({params_time/total_time*100:5.1f}%)")
+        print(f"         └─ Dense conversion:  {dense_conversion_time:8.3f}s ({dense_conversion_time/total_time*100:5.1f}%)")
+        print(f"         └─ Matrix build:      {matrix_build_time:8.3f}s ({matrix_build_time/total_time*100:5.1f}%)")
+        print(f"         └─ Matrix parameter:  {matrix_param_time:8.3f}s ({matrix_param_time/total_time*100:5.1f}%)")
+        print(f"Phase 7  - Variables:         {vars_time:8.3f}s ({vars_time/total_time*100:5.1f}%)")
+        print(f"Phase 8  - Constraints (OPT): {constraints_time:8.3f}s ({constraints_time/total_time*100:5.1f}%)")
+        print(f"Phase 9  - Model Creation:    {model_time:8.3f}s ({model_time/total_time*100:5.1f}%)")
+        print(f"Phase 10 - SOLVING:           {solve_time:8.3f}s ({solve_time/total_time*100:5.1f}%) ⭐")
+        print(f"Phase 11 - Results:           {results_time:8.3f}s ({results_time/total_time*100:5.1f}%)")
+        print(f"="*80)
+    
+        # Identify potential bottlenecks
+        bottleneck_threshold = 0.10 * total_time  # 10% of total time
+        print(f"BOTTLENECK ANALYSIS (phases >10% of total time):")
+        bottlenecks = []
+        if setup_time > bottleneck_threshold:
+            bottlenecks.append(f"  🐌 GAMS Setup: {setup_time:.3f}s ({setup_time/total_time*100:.1f}%)")
+        if params_time > bottleneck_threshold:
+            bottlenecks.append(f"  🐌 Parameter Creation: {params_time:.3f}s ({params_time/total_time*100:.1f}%)")
+            if dense_conversion_time > bottleneck_threshold/2:
+                bottlenecks.append(f"    └─ Sparse→Dense conversion: {dense_conversion_time:.3f}s")
+            if matrix_build_time > bottleneck_threshold/2:
+                bottlenecks.append(f"    └─ Matrix data building: {matrix_build_time:.3f}s")
+            if matrix_param_time > bottleneck_threshold/2:
+                bottlenecks.append(f"    └─ GAMS parameter creation: {matrix_param_time:.3f}s")
+        if constraints_time > bottleneck_threshold:
+            bottlenecks.append(f"  🚀 OPTIMIZED Constraint Creation: {constraints_time:.3f}s ({constraints_time/total_time*100:.1f}%) [Batch Mode]")
+        if solve_time > bottleneck_threshold:
+            bottlenecks.append(f"  ⭐ Actual Solving: {solve_time:.3f}s ({solve_time/total_time*100:.1f}%) [Expected]")
+        
+        if not bottlenecks:
+            print(f"  ✅ No significant bottlenecks detected (all phases <10%)")
+        else:
+            for bottleneck in bottlenecks:
+                print(bottleneck)
+        
+        # Performance improvement analysis
+        print(f"\nOPTIMIZATION STATUS:")
+        if constraints_time < bottleneck_threshold:
+            print(f"  🎉 SUCCESS: Constraint creation time reduced to {constraints_time:.3f}s ({constraints_time/total_time*100:.1f}%)")
+            print(f"  🚀 BATCH MODE: Using {len(all_constraints)} constraint groups instead of {num_constraints} individual constraints")
+        else:
+            print(f"  ⚠️  Constraint creation still dominant: {constraints_time:.3f}s ({constraints_time/total_time*100:.1f}%)")
+        print(f"  💡 Further optimization may be needed")
+    
     return model
 
 if __name__ == "__main__":
-    # Check for command line argument
-    if len(sys.argv) != 2:
-        print("Usage: python cuopt_solver.py <json_filename>")
-        print("Example: python cuopt_solver.py afiro.json")
-        sys.exit(1)
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Solve cuOpt problems using GAMS interface',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python cuopt_json_to_gams.py problem.json                    # Normal output (no timing)
+  python cuopt_json_to_gams.py problem.json --timing           # Show detailed timing analysis
+        """
+    )
     
-    json_filename = sys.argv[1]
+    parser.add_argument('json_filename', help='JSON file containing the cuOpt problem')
+    parser.add_argument('--timing', action='store_true', 
+                       help='Show detailed timing breakdown for performance analysis')
+    
+    args = parser.parse_args()
     
     # Check if file exists
     import os
-    if not os.path.exists(json_filename):
-        print(f"Error: File '{json_filename}' not found.")
+    if not os.path.exists(args.json_filename):
+        print(f"Error: File '{args.json_filename}' not found.")
         sys.exit(1)
     
     # Solve the cuopt problem from JSON file
     try:
-        model = solve_cuopt_problem(json_filename)
-        print(f"\nProblem solved successfully from {json_filename}!")
+        overall_start = time.time()
+        model = solve_cuopt_problem(args.json_filename, timing=args.timing)
+        overall_time = time.time() - overall_start
+        print(f"\nProblem solved successfully from {args.json_filename} in {overall_time:.3f}s!")
     except Exception as e:
         print(f"Error solving problem: {e}")
         import traceback
