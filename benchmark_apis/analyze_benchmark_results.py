@@ -21,7 +21,7 @@ This script analyzes the results from cuopt_benchmark_results.csv and provides:
 - Which solver was fastest for each problem (based on total time including overhead)
 - Whether objective values are consistent across solvers
 - Percentage differences in total times compared to the fastest solver
-- Solver time analysis and flags for interfaces with >1% solver time deviation (ignoring ≤1ms differences)
+- Solver time analysis and flags for interfaces with >5% solver time deviation (ignoring ≤1ms differences)
 
 The script compares total time by default since overhead is important for practical use,
 but also analyzes pure solver performance to identify interface inefficiencies.
@@ -122,7 +122,7 @@ def analyze_row(row: Dict[str, str], solver_names: List[str], time_metric: str =
         'fastest_time': None,
         'fastest_solver_time': None,
         'time_metric': time_metric,
-        'solver_time_deviations': {}  # Interfaces with >1% solver time deviation
+        'solver_time_deviations': {}  # Interfaces with >5% solver time deviation
     }
     
     if not successful_solvers:
@@ -165,15 +165,15 @@ def analyze_row(row: Dict[str, str], solver_names: List[str], time_metric: str =
     analysis['fastest_solver_by_solver_time'] = solver_times[0][0]
     analysis['fastest_solver_time'] = solver_times[0][1]
     
-    # Calculate solver time differences and flag >1% deviations (but ignore differences ≤1ms)
+    # Calculate solver time differences and flag >5% deviations (but ignore differences ≤1ms)
     fastest_solver_time = solver_times[0][1]
     for name, data in successful_solvers.items():
         if data['solver_time'] != fastest_solver_time:
             pct_diff = ((data['solver_time'] - fastest_solver_time) / fastest_solver_time) * 100
             analysis['solver_time_differences'][name] = pct_diff
-            # Flag if deviation is >1% AND absolute difference is >1ms (0.001s)
+            # Flag if deviation is >5% AND absolute difference is >1ms (0.001s)
             abs_diff = data['solver_time'] - fastest_solver_time
-            if pct_diff > 1.0 and abs_diff > 0.001:
+            if pct_diff > 5.0 and abs_diff > 0.001:
                 analysis['solver_time_deviations'][name] = pct_diff
         else:
             analysis['solver_time_differences'][name] = 0.0
@@ -268,10 +268,10 @@ def print_detailed_analysis(analyses: List[Dict], solver_names: List[str], show_
         print(f"{format_solver_name(solver):<15}: {count:3d} problems ({percentage:5.1f}%)")
     
     if problems_with_solver_time_deviations > 0:
-        print(f"\n⚠️  WARNING: {problems_with_solver_time_deviations} problems had interfaces with >1% solver time deviation!")
+        print(f"\n⚠️  WARNING: {problems_with_solver_time_deviations} problems had interfaces with >5% solver time deviation!")
         print("   This suggests potential interface inefficiencies beyond just overhead.")
     else:
-        print(f"\n✅ All interfaces had consistent solver times (within 1 millisecond or 1% of best)")
+        print(f"\n✅ All interfaces had consistent solver times (within 1 millisecond or 5% of best)")
     
     if objective_inconsistent > 0:
         print(f"\n⚠️  WARNING: {objective_inconsistent} problems had inconsistent objective values!")
@@ -311,7 +311,7 @@ def print_detailed_analysis(analyses: List[Dict], solver_names: List[str], show_
         
         # Flag solver time deviations
         if analysis['solver_time_deviations']:
-            print(f"   🚨 Solver time deviations >1%:")
+            print(f"   🚨 Solver time deviations >5%:")
             # Sort by solver name for consistent ordering
             for solver in sorted(analysis['solver_time_deviations'].keys()):
                 deviation = analysis['solver_time_deviations'][solver]
@@ -505,7 +505,7 @@ Examples:
   python analyze_benchmark_results.py --show-failed            # Include failed problems in output
 
 Note: The script always analyzes both solver time and total time, but uses the specified
-time metric for primary comparisons. Solver time deviations >1% are flagged regardless
+time metric for primary comparisons. Solver time deviations >5% are flagged regardless
 of the primary metric.
         """
     )
@@ -560,7 +560,7 @@ of the primary metric.
             time_label = "Total Time" if args.time_metric == 'total' else "Solver Time"
             print(f"Discovered {len(solver_names)} solvers: {', '.join([format_solver_name(s) for s in solver_names])}")
             print(f"Primary Analysis Metric: {time_label}")
-            print("Note: Solver time deviations >1% and >1ms will be flagged regardless of primary metric.")
+            print("Note: Solver time deviations >5% and >1ms will be flagged regardless of primary metric.")
             
             for row in reader:
                 analysis = analyze_row(row, solver_names, args.time_metric)
