@@ -54,6 +54,72 @@ import argparse
 from typing import Dict, List, Tuple, Optional
 import sys
 
+def parse_detailed_timing_markers(stdout: str) -> Optional[Dict[str, float]]:
+    """
+    Parse detailed timing markers from cuOpt interface output.
+    
+    Returns dictionary with timing values in seconds, or None if key markers not found.
+    Expected markers:
+    - PROBLEM_START: When interface setup begins
+    - CUOPT_CREATE_PROBLEM: When cuOpt problem creation starts  
+    - CUOPT_SOLVE_START: When cuOpt solving starts
+    - CUOPT_SOLVE_RETURN: When cuOpt solving finishes
+    - SOLVE_END_TIME: When interface cleanup finishes
+    """
+    markers = {}
+    
+    # Define all expected markers (handle both regular and scientific notation, and both with/without colons)
+    marker_patterns = {
+        'PROBLEM_START': r'PROBLEM_START:?\s+([\d.]+(?:[eE][-+]?\d+)?)',
+        'CUOPT_CREATE_PROBLEM': r'CUOPT_CREATE_PROBLEM:?\s+([\d.]+(?:[eE][-+]?\d+)?)', 
+        'CUOPT_SOLVE_START': r'CUOPT_SOLVE_START:?\s+([\d.]+(?:[eE][-+]?\d+)?)',
+        'CUOPT_SOLVE_RETURN': r'CUOPT_SOLVE_RETURN:?\s+([\d.]+(?:[eE][-+]?\d+)?)',
+        'SOLVE_END_TIME': r'(?:SOLVE_END_TIME|SOLVE_END):?\s+([\d.]+(?:[eE][-+]?\d+)?)'
+    }
+    
+    # Extract each marker
+    for marker_name, pattern in marker_patterns.items():
+        match = re.search(pattern, stdout)
+        if match:
+            markers[marker_name] = float(match.group(1))
+    
+    # Only return if we have the essential markers for calculations
+    essential_markers = ['PROBLEM_START', 'CUOPT_SOLVE_START', 'CUOPT_SOLVE_RETURN', 'SOLVE_END_TIME']
+    if all(marker in markers for marker in essential_markers):
+        return markers
+    
+    return None
+
+def calculate_timing_metrics(markers: Dict[str, float]) -> Dict[str, float]:
+    """
+    Calculate timing metrics from detailed markers.
+    
+    Returns dictionary with:
+    - interface_overhead: Setup + teardown overhead
+    - cuopt_solver_time: Pure cuOpt solver time
+    - total_time: End-to-end time
+    """
+    metrics = {}
+    
+    # Interface overhead = setup + teardown
+    setup_overhead = 0.0
+    if 'CUOPT_CREATE_PROBLEM' in markers:
+        setup_overhead = markers['CUOPT_CREATE_PROBLEM'] - markers['PROBLEM_START']
+    else:
+        # If no CUOPT_CREATE_PROBLEM, use CUOPT_SOLVE_START as fallback
+        setup_overhead = markers['CUOPT_SOLVE_START'] - markers['PROBLEM_START']
+    
+    teardown_overhead = markers['SOLVE_END_TIME'] - markers['CUOPT_SOLVE_RETURN']
+    metrics['interface_overhead'] = setup_overhead + teardown_overhead
+    
+    # cuOpt solver time
+    metrics['cuopt_solver_time'] = markers['CUOPT_SOLVE_RETURN'] - markers['CUOPT_SOLVE_START']
+    
+    # Total end-to-end time
+    metrics['total_time'] = markers['SOLVE_END_TIME'] - markers['PROBLEM_START']
+    
+    return metrics
+
 def run_command_with_timeout(cmd: List[str], timeout: int = 600, cwd: str = None) -> Tuple[int, str, str]:
     """
     Run a command with timeout and return exit code, stdout, stderr.
@@ -79,12 +145,18 @@ def parse_cuopt_json_solver_output(stdout: str) -> Tuple[Optional[float], Option
     Expected patterns:
     - Status: Optimal   Objective: -4.64753143e+02  Iterations: 15  Time: 0.019s
     - Objective value: -464.753143
+    - - Objective value: -11.638929 (Julia format with bullet point)
     """
     objective = None
     solver_time = None
     
-    # Look for objective value
-    obj_match = re.search(r'Objective value:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', stdout)
+    # Look for objective value (multiple formats)
+    # Format 1: "- Objective value: -11.638929" (detailed output)
+    obj_match = re.search(r'[-\s]*Objective value:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)', stdout)
+    if not obj_match:
+        # Format 2: "Objective: -11.638929" (Julia subprocess format)
+        obj_match = re.search(r'^Objective:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)$', stdout, re.MULTILINE)
+    
     if obj_match:
         objective = float(obj_match.group(1))
     
@@ -92,6 +164,16 @@ def parse_cuopt_json_solver_output(stdout: str) -> Tuple[Optional[float], Option
     status_time_match = re.search(r'Status:\s+\w+.*?Time:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)s', stdout)
     if status_time_match:
         solver_time = float(status_time_match.group(1))
+    else:
+        # Try Julia subprocess format: "Time: 0.023847" (separate line)
+        time_match = re.search(r'^Time:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)$', stdout, re.MULTILINE)
+        if time_match:
+            solver_time = float(time_match.group(1))
+        else:
+            # Try Julia detailed format: "- Solve time: 0.022 seconds"
+            solve_time_match = re.search(r'[-\s]*Solve time:\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*seconds', stdout)
+            if solve_time_match:
+                solver_time = float(solve_time_match.group(1))
     
     return objective, solver_time
 
@@ -342,27 +424,57 @@ def benchmark_file(json_file_path: str, selected_solvers: List[Dict]) -> Dict[st
             stderr = str(e)
         total_time = time.time() - start_time
         
-        # Parse output using the specified parser function
+        # Parse output using detailed timing markers
         if exit_code == 0:
-            # Get the parser function by name
+            # Get the parser function by name for objective and reported solver time
             parser_func = globals()[solver['parser']]
-            objective, solver_time = parser_func(stdout)
+            objective, reported_solver_time = parser_func(stdout)
+            
             
             # Round objective value to 6 decimal places if not None
             if objective is not None:
                 objective = round(objective, 6)
             
-            results[solver_name] = {
-                "objective": objective, 
-                "solver_time": solver_time,
-                "total_time": total_time
-            }
-            print(f"    ✓ Objective: {objective}, Solver Time: {solver_time}s, Total Time: {total_time:.3f}s")
+            # Parse detailed timing markers
+            timing_markers = parse_detailed_timing_markers(stdout)
+            if timing_markers:
+                timing_metrics = calculate_timing_metrics(timing_markers)
+                
+                results[solver_name] = {
+                    "objective": objective,
+                    "interface_overhead": timing_metrics['interface_overhead'],
+                    "cuopt_solver_time": timing_metrics['cuopt_solver_time'],
+                    "process_total_time": total_time,  # Always use subprocess time for total_time
+                    "reported_solver_time": reported_solver_time,  # Keep for comparison
+                    "marker_total_time": timing_metrics['total_time']  # Store marker time for analysis
+                }
+                
+                print(f"    ✓ Objective: {objective}")
+                print(f"      Interface Overhead: {timing_metrics['interface_overhead']:.3f}s")
+                print(f"      cuOpt Solver Time: {timing_metrics['cuopt_solver_time']:.3f}s")
+                print(f"      Total Time (subprocess): {total_time:.3f}s")
+                print(f"      Total Time (markers): {timing_metrics['total_time']:.3f}s")
+                print(f"      (Reported solver time: {reported_solver_time if reported_solver_time is not None else 'None'}s)")
+            else:
+                # Fallback to old method if detailed markers not found
+                results[solver_name] = {
+                    "objective": objective,
+                    "interface_overhead": None,
+                    "cuopt_solver_time": None, 
+                    "process_total_time": total_time,  # Subprocess time
+                    "reported_solver_time": reported_solver_time,
+                    "marker_total_time": None
+                }
+                print(f"    ✓ Objective: {objective}, Reported Solver Time: {reported_solver_time}s, Total Time: {total_time:.3f}s")
+                print(f"      (No detailed timing markers found)")
         else:
             results[solver_name] = {
-                "objective": None, 
-                "solver_time": None,
-                "total_time": total_time
+                "objective": None,
+                "interface_overhead": None,
+                "cuopt_solver_time": None,
+                "process_total_time": total_time,  # Subprocess time for failed runs
+                "reported_solver_time": None,
+                "marker_total_time": None
             }
             print(f"    ✗ Failed (exit code {exit_code}): {stderr}")
     
@@ -384,7 +496,7 @@ Examples:
   python benchmark_cuopt.py lp/ -f small_files.txt  # Use files from lp/ but only those listed in small_files.txt
 
 Note: The cuOpt programs (cuopt_json_to_c_api, cuopt_json_to_python_api.py, cuopt_json_to_cvxpy.py, 
-cuopt_json_to_gams.py, etc.) must be present in the directory where this script is run from.
+cuopt_json_to_pulp.py, cuopt_json_to_ampl.py, cuopt_json_to_julia.jl, cuopt_json_to_gams.py, etc.) must be present in the directory where this script is run from.
 
 The CSV results file is updated after each file is processed, so you can monitor 
 progress in real-time using: tail -f cuopt_benchmark_results.csv
@@ -404,13 +516,13 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
     parser.add_argument(
         '--solvers',
         type=str,
-        default='C,python,cvxpy,pulp,ampl,julia,gams',
-        help='Comma-separated list of solvers to run. Options: C (cuopt_json_to_c_api), python (cuopt_json_to_python_api.py), cvxpy (cuopt_json_to_cvxpy.py), pulp (cuopt_json_to_pulp.py), ampl (cuopt_json_to_ampl.py), julia (cuopt_json_to_julia.jl), gams (cuopt_json_to_gams.py). Default: C,python,cvxpy,pulp,ampl,julia,gams'
+        default='C,ampl,julia,gams,python,cvxpy,pulp',
+        help='Comma-separated list of solvers to run. Options: C (cuopt_json_to_c_api), ampl (cuopt_json_to_ampl.py), julia (cuopt_json_to_julia.jl), gams (cuopt_json_to_gams.py), python (cuopt_json_to_python_api.py), cvxpy (cuopt_json_to_cvxpy.py), pulp (cuopt_json_to_pulp.py). Default: C,ampl,julia,gams,python,cvxpy,pulp (currently focusing on detailed timing analysis for these seven)'
     )
     
     args = parser.parse_args()
     
-    # Parse and validate solvers argument
+    # Parse and validate solvers argument (currently focusing on C, AMPL, Julia, GAMS, Python, CVXPY, and PuLP with detailed timing)
     SOLVER_MAPPING = {
         'C': {
             'name': 'cuopt_json_to_c_api',
@@ -418,11 +530,29 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
             'file_check': 'cuopt_json_to_c_api',
             'parser': 'parse_cuopt_json_solver_output'
         },
+        'ampl': {
+            'name': 'cuopt_json_to_ampl',
+            'command': ['python', 'cuopt_json_to_ampl.py', '--quiet'],
+            'file_check': 'cuopt_json_to_ampl.py',
+            'parser': 'parse_cuopt_ampl_output'
+        },
+        'julia': {
+            'name': 'cuopt_json_to_julia',
+            'command': ['julia', 'cuopt_json_to_julia.jl'],
+            'file_check': 'cuopt_json_to_julia.jl',
+            'parser': 'parse_cuopt_json_solver_output'
+        },
+        'gams': {
+            'name': 'cuopt_json_to_gams',
+            'command': ['python', 'cuopt_json_to_gams.py'],
+            'file_check': 'cuopt_json_to_gams.py',
+            'parser': 'parse_cuopt_gams_output'
+        },
         'python': {
-            'name': 'cuopt_json_to_python',
+            'name': 'cuopt_json_to_python_api',
             'command': ['python', 'cuopt_json_to_python_api.py'],
             'file_check': 'cuopt_json_to_python_api.py',
-            'parser': 'parse_cuopt_api2_output'
+            'parser': 'parse_cuopt_json_solver_output'
         },
         'cvxpy': {
             'name': 'cuopt_json_to_cvxpy',
@@ -435,24 +565,6 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
             'command': ['python', 'cuopt_json_to_pulp.py', '--quiet'],
             'file_check': 'cuopt_json_to_pulp.py',
             'parser': 'parse_cuopt_pulp_output'
-        },
-        'ampl': {
-            'name': 'cuopt_json_to_ampl',
-            'command': ['python', 'cuopt_json_to_ampl.py', '--quiet'],
-            'file_check': 'cuopt_json_to_ampl.py',
-            'parser': 'parse_cuopt_ampl_output'
-        },
-        'julia': {
-            'name': 'cuopt_json_to_julia',
-            'command': ['./cuopt_json_to_julia.jl'],
-            'file_check': 'cuopt_json_to_julia.jl',
-            'parser': 'parse_cuopt_julia_output'
-        },
-        'gams': {
-            'name': 'cuopt_json_to_gams',
-            'command': ['python', 'cuopt_json_to_gams.py'],
-            'file_check': 'cuopt_json_to_gams.py',
-            'parser': 'parse_cuopt_gams_output'
         }
     }
     
@@ -543,7 +655,14 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
     csv_filename = "cuopt_benchmark_results.csv"
     fieldnames = ['filename']
     for solver in selected_solvers:
-        fieldnames.extend([f"{solver['name']}_objective", f"{solver['name']}_solver_time", f"{solver['name']}_total_time"])
+        fieldnames.extend([
+            f"{solver['name']}_objective", 
+            f"{solver['name']}_interface_overhead", 
+            f"{solver['name']}_cuopt_solver_time",
+            f"{solver['name']}_process_total_time",
+            f"{solver['name']}_reported_solver_time",
+            f"{solver['name']}_marker_total_time"
+        ])
     
     print(f"\nCreating CSV report: {csv_filename}")
     print("(You can monitor progress by running: tail -f cuopt_benchmark_results.csv)")
@@ -574,12 +693,18 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
                 solver_name = solver['name']
                 if solver_name in file_results:
                     row[f'{solver_name}_objective'] = file_results[solver_name]['objective']
-                    row[f'{solver_name}_solver_time'] = file_results[solver_name]['solver_time']
-                    row[f'{solver_name}_total_time'] = file_results[solver_name]['total_time']
+                    row[f'{solver_name}_interface_overhead'] = file_results[solver_name]['interface_overhead']
+                    row[f'{solver_name}_cuopt_solver_time'] = file_results[solver_name]['cuopt_solver_time']
+                    row[f'{solver_name}_process_total_time'] = file_results[solver_name]['process_total_time']
+                    row[f'{solver_name}_reported_solver_time'] = file_results[solver_name]['reported_solver_time']
+                    row[f'{solver_name}_marker_total_time'] = file_results[solver_name]['marker_total_time']
                 else:
                     row[f'{solver_name}_objective'] = None
-                    row[f'{solver_name}_solver_time'] = None
-                    row[f'{solver_name}_total_time'] = None
+                    row[f'{solver_name}_interface_overhead'] = None
+                    row[f'{solver_name}_cuopt_solver_time'] = None
+                    row[f'{solver_name}_process_total_time'] = None
+                    row[f'{solver_name}_reported_solver_time'] = None
+                    row[f'{solver_name}_marker_total_time'] = None
             
             writer.writerow(row)
             csvfile.flush()  # Ensure data is written immediately for tailing
@@ -601,10 +726,10 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
         header_parts.append(f"{solver_name:<25}")
     print("".join(header_parts))
 
-    # Sub-header for "Obj / Solver Time / Total Time"
+    # Sub-header for "Obj / cuOpt+Interface / Total Time"  
     subheader_parts = [f"{'':20}"]
     for _ in solver_names:
-        subheader_parts.append(f"{'Obj / SolverT / TotalT':<25}")
+        subheader_parts.append(f"{'Obj / cuOpt+Interface / TotalT':<25}")
     print("".join(subheader_parts))
     print("-" * header_width)
 
@@ -616,12 +741,22 @@ progress in real-time using: tail -f cuopt_benchmark_results.csv
             solver_name = solver['name']
             if solver_name in results and results[solver_name]['objective'] is not None:
                 obj = results[solver_name]['objective']
-                solver_time = results[solver_name]['solver_time']
-                total_time = results[solver_name]['total_time']
-                if solver_time is not None:
-                    row_parts.append(f"{obj:.2f}/{solver_time:.3f}/{total_time:.3f}"[:24])
+                
+                # Use new detailed timing structure if available
+                if results[solver_name]['cuopt_solver_time'] is not None:
+                    cuopt_time = results[solver_name]['cuopt_solver_time']
+                    interface_overhead = results[solver_name]['interface_overhead']
+                    total_time = results[solver_name]['process_total_time']
+                    # Show cuOpt solver time + interface overhead
+                    row_parts.append(f"{obj:.2f}/{cuopt_time:.3f}+{interface_overhead:.3f}/{total_time:.3f}"[:24])
                 else:
-                    row_parts.append(f"{obj:.2f}/--/{total_time:.3f}"[:24])
+                    # Fallback to old structure
+                    reported_solver_time = results[solver_name]['reported_solver_time']
+                    total_time = results[solver_name]['process_total_time']
+                    if reported_solver_time is not None:
+                        row_parts.append(f"{obj:.2f}/{reported_solver_time:.3f}/{total_time:.3f}"[:24])
+                    else:
+                        row_parts.append(f"{obj:.2f}/--/{total_time:.3f}"[:24])
             else:
                 row_parts.append("FAILED"[:24])
         

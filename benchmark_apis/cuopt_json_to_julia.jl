@@ -103,6 +103,8 @@ function solve_cuopt_json_with_julia(json_file_path::String; verbose::Bool=true)
     end
     timing_data["json_parse_time"] = time() - json_start
     
+    println("PROBLEM_START: ", @sprintf("%.6f", time()))
+    
     # Time data processing
     processing_start = time()
     
@@ -339,6 +341,8 @@ function solve_cuopt_json_with_julia(json_file_path::String; verbose::Bool=true)
     end
     
     optimize!(model)
+    
+    println("SOLVE_END_TIME: ", @sprintf("%.6f", time()))
     
     # Try to get actual solver time from JuMP
     solve_time = time() - solve_start  # Default to wall clock time

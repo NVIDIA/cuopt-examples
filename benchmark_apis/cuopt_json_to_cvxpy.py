@@ -297,6 +297,7 @@ def solve_lp_from_dict(problem_dict, solver, matrix_variable_bounds, solver_mode
                                     solver_verbose=verbose or solver_verbose)
             except Exception:
                 pass
+    print(f"SOLVE_END_TIME: {time.time()}")
 
     solve_time = time.time() - solve_start
     if timing:
@@ -398,7 +399,8 @@ if __name__ == "__main__":
     else:            
         with open(args.file, "r") as f:
             problem_dict = json.load(f)
-    
+
+    print(f"PROBLEM_START: {time.time()}")
     # Solve problem
     start_time = time.time()
     try:

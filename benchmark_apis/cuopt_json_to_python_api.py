@@ -46,6 +46,7 @@ constraint_bounds["upper_bounds"] and ignores constraint_bounds["bounds"]
 import json
 import numpy as np
 import sys
+import time
 from typing import Dict, Any, List
 
 from cuopt.linear_programming.problem import Problem, VType, CType, sense, Constraint
@@ -98,7 +99,9 @@ def create_problem_from_cuopt_json(json_file_path: str) -> Problem:
     # Read the JSON file
     with open(json_file_path, 'r') as f:
         problem_data = json.load(f)
-    
+
+    print(f"PROBLEM_START: {time.time()}")
+        
     # Handle infinity values
     problem_data = handle_infinity_values(problem_data)
     
@@ -259,6 +262,7 @@ def solve_cuopt_json_example(json_file_path: str, time_limit: float = 60.0):
     
     # Solve the problem
     prob.solve(settings)
+    print(f"SOLVE_END_TIME: {time.time()}")
     
     print(f"\nSolution found!")
     print(f"  - Status: {prob.Status.name}")

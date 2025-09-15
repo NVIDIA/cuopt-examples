@@ -26,6 +26,7 @@
  */
 
 #define _POSIX_C_SOURCE 199309L
+#define _DEFAULT_SOURCE  // For gettimeofday on glibc
 
 #include <cuopt/linear_programming/cuopt_c.h>
 #include <stdio.h>
@@ -34,6 +35,7 @@
 #include <math.h>
 #include <cJSON.h>
 #include <time.h>
+#include <sys/time.h>  // For gettimeofday and struct timeval
 
 // Global flags to control features (disabled by default)
 static int timing_enabled = 0;
@@ -202,7 +204,12 @@ int parse_cuopt_json(const char* filename, ProblemData* data) {
     if (bytes_read != (size_t)file_size) {
         printf("Warning: Only read %zu bytes out of %ld expected\n", bytes_read, file_size);
     }
-    
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    double timestamp = (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+    printf("PROBLEM_START: %.6f\n", timestamp);
+
     // Parse JSON
     log_timestamp("JSON_PARSE_STRUCTURE_START");
     Timer json_parse_timer;
@@ -539,7 +546,11 @@ int solve_problem(const ProblemData* data) {
     start_timer(&solve_timer);
     
     status = cuOptSolve(problem, settings, &solution);
-    
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    double timestamp = (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+    printf("SOLVE_END_TIME: %.6f\n", timestamp);
+	
     double solve_time_measured = end_timer(&solve_timer);
     log_timestamp("SOLVER_EXECUTION_END");
     log_phase_duration("SOLVER_EXECUTION", solve_time_measured);

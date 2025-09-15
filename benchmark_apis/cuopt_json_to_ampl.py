@@ -309,6 +309,11 @@ def solve_cuopt_json_with_ampl(json_file_path: str, solver: Optional[str] = None
             problem_data = json.load(f)
     except Exception as e:
         raise ValueError(f"Failed to read JSON file: {e}")
+
+    # Initialize AMPL
+    ampl = AMPL()
+
+    print(f"PROBLEM_START: {time.time()}")
     
     # Handle infinity values
     problem_data = handle_infinity_values(problem_data)
@@ -319,10 +324,7 @@ def solve_cuopt_json_with_ampl(json_file_path: str, solver: Optional[str] = None
     model_str = create_ampl_model(problem_data, verbose)
     
     setup_time = time.time() - start_time
-    
-    # Initialize AMPL
-    ampl = AMPL()
-    
+        
     try:
         if verbose:
             print(f"Model setup completed in {setup_time:.3f} seconds")
@@ -346,7 +348,7 @@ def solve_cuopt_json_with_ampl(json_file_path: str, solver: Optional[str] = None
             print("Solving...")
         
         ampl.solve()
-        
+        print(f"SOLVE_END_TIME: {time.time()}")        
         solve_time = time.time() - solve_start
         total_time = time.time() - start_time
         

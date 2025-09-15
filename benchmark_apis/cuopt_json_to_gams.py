@@ -84,6 +84,8 @@ def solve_cuopt_problem(json_filename, timing=False):
     read_start = time.time()
     if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Reading cuopt problem from {json_filename}...")
     data = read_cuopt_json(json_filename)
+    print(f"PROBLEM_START {time.time()}")
+    
     read_time = time.time() - read_start
     if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] JSON file read completed ({read_time:.3f}s)")
     
@@ -316,6 +318,8 @@ def solve_cuopt_problem(json_filename, timing=False):
     if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Solving {'maximization' if maximize else 'minimization'} problem with cuopt solver...")
     # Solve with cuopt solver (optfile is set globally via environment variable)
     model.solve("cuopt", output=sys.stdout)
+    print(f"SOLVE_END_TIME {time.time()}")
+    
     solve_time = time.time() - solve_start
     if timing: print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Solving completed ({solve_time:.3f}s)")
     

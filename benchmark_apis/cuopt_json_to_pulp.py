@@ -114,6 +114,8 @@ def solve_cuopt_json_with_pulp(json_file_path: str, solver_name: Optional[str] =
             problem_data = json.load(f)
     except Exception as e:
         raise ValueError(f"Failed to read JSON file: {e}")
+
+    print(f"PROBLEM_START: {time.time()}")
     
     read_time = time.time() - read_start
     if timing:
@@ -330,7 +332,8 @@ def solve_cuopt_json_with_pulp(json_file_path: str, solver_name: Optional[str] =
         if verbose:
             print("Solving with default PuLP solver...")
         prob.solve()
-    
+    print(f"SOLVE_END_TIME: {time.time()}")
+
     solve_time = time.time() - solve_start
     if timing:
         print(f"🕐 [T+{time.time() - total_start_time:.3f}s] Solving completed ({solve_time:.3f}s)")
