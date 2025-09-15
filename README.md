@@ -2,7 +2,7 @@
 NVIDIA cuOpt is a GPU-accelerated combinatorial and linear optimization engine for solving complex route optimization problems such as Vehicle Routing and large Linear Programming problems.
 This repository contains a collection of examples demonstrating use of NVIDIA cuOpt via service APIs, SDK and Integration with other OSS optimization solvers. 
 
-The cuOpt-Resources repository is under [MIT License](LICENSE.md)
+This repository is under [MIT License](LICENSE.md)
 
 [cuOpt Docs](https://docs.nvidia.com/cuopt/)
 
@@ -60,3 +60,7 @@ The `intra-factory_transport` directory contains an example of using the cuOpt S
 ## Contributing
 
 We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute new examples or improve existing ones.
+
+## Tutorial Videos
+
+[Example videos](https://docs.nvidia.com/cuopt/user-guide/latest/resources.html#cuopt-examples-and-tutorials-videos) can be found listed in the documentation 
