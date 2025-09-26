@@ -8,10 +8,10 @@ This folder contains examples of how to use NVIDIA cuOpt **Python API** to solve
 
 The diet optimization notebook solves a linear programming problem where:
 
-- The goal is to minimize the cost of a diet while satisfying the nutritional requirements
+- The goal is to minimize the cost of a diet while satisfying the nutritional requirements.
 
 ### 2. Last-Mile Delivery (CVRP)
 
 The last-mile delivery notebook solves a capacitated vehicle routing problem where:
 
-- The goal is to minimize the total distance traveled by all vehicles while satisfying all delivery demands
+- The goal is to minimize the total distance traveled by all vehicles while satisfying all delivery demands.

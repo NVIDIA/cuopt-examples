@@ -8,9 +8,9 @@ This folder contains examples of how to use NVIDIA cuOpt **Python API** to solve
 
 The diet optimization notebook solves a linear programming problem where:
 
-- The goal is to minimize the cost of a diet while satisfying the nutritional requirements
-- The diet is a mix of different foods
-- The foods have different prices and nutritional values
+- The goal is to minimize the cost of a diet while satisfying the nutritional requirements.
+- The diet is a mix of different foods.
+- The foods have different prices and nutritional values.
 
 
 ### 2. Diet Optimization (MILP)
