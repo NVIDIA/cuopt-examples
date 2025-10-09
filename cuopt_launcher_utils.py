@@ -267,9 +267,10 @@ def create_notebook_item(nb, branch):
     toggle_btn = ToggleButton(
         value=False,
         description='📋 Show Setup Code',
-        button_style='success',
+        button_style='',  # Custom styling below
         tooltip='Click to show/hide setup code for Colab',
-        layout=Layout(width='180px')
+        layout=Layout(width='180px'),
+        style={'button_color': '#76B900', 'font_weight': 'bold'}
     )
     
     # Create textarea with setup code (initially hidden)
@@ -323,11 +324,11 @@ def create_notebook_item(nb, branch):
         instruction_label,
         code_textarea
     ], layout=Layout(
-        padding='10px',
-        margin='5px 0',
-        border='1px solid #ddd',
-        border_radius='5px',
-        background_color='#f9f9f9'
+        padding='12px',
+        margin='8px 0',
+        border='1px solid #d0e8b8',
+        border_radius='6px',
+        background_color='#fafffe'
     ))
 
 
@@ -357,9 +358,11 @@ def create_notebook_browser():
         readme = get_readme_content(folder_path)
         if readme:
             readme_widget = HTMLWidget(f"""
-            <div style='background-color: #f0f8ff; padding: 10px; margin-bottom: 15px; border-radius: 5px; border-left: 4px solid #4CAF50;'>
-                <strong>📖 Folder Description:</strong>
-                <pre style='white-space: pre-wrap; font-size: 12px; margin-top: 5px;'>{escape_html(readme)}</pre>
+            <div style='background-color: #f0f9e8; padding: 12px; margin-bottom: 15px; 
+                        border-radius: 6px; border-left: 4px solid #76B900;'>
+                <strong style='color: #2d5016;'>📖 Folder Description:</strong>
+                <pre style='white-space: pre-wrap; font-size: 12px; margin-top: 5px; 
+                     color: #2d5016; background: transparent; border: none; padding: 0;'>{escape_html(readme)}</pre>
             </div>
             """)
             folder_widgets.append(readme_widget)
@@ -373,39 +376,68 @@ def create_notebook_browser():
         folder_vbox = VBox(folder_widgets, layout=Layout(padding='10px'))
         accordion_items.append(folder_vbox)
         
-        # Format folder title
+        # Format folder title with NVIDIA green styling
         nb_count = len(folder_notebooks)
         folder_display = folder.replace('_', ' ').title() if folder != 'root' else 'Root'
-        accordion_titles.append(f"{folder_display} ({nb_count} notebook{'s' if nb_count != 1 else ''})")
+        accordion_titles.append(f"🟢 {folder_display} ({nb_count} notebook{'s' if nb_count != 1 else ''})")
     
-    # Create accordion
-    accordion = widgets.Accordion(children=accordion_items)
+    # Create elegant accordion with NVIDIA green styling
+    accordion = widgets.Accordion(
+        children=accordion_items,
+        layout=Layout(
+            border='2px solid #76B900',
+            border_radius='8px',
+            margin='10px 0',
+            overflow='hidden'
+        )
+    )
     for i, title in enumerate(accordion_titles):
         accordion.set_title(i, title)
     
-    # Summary
+    # Summary with NVIDIA green branding
     total_notebooks = sum(len(nbs) for nbs in notebooks.values())
     summary = HTMLWidget(f"""
-    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-        <h3 style='margin: 0 0 10px 0;'>📚 Notebook Library</h3>
-        <p style='margin: 0; font-size: 14px;'>Found <strong>{total_notebooks}</strong> notebooks across <strong>{len(notebooks)}</strong> categories</p>
-        <p style='margin: 5px 0 0 0; font-size: 12px;'>Current branch: <strong>{branch}</strong></p>
+    <style>
+        .p-Accordion-child {{
+            border-top: 2px solid #76B900 !important;
+        }}
+        .p-Collapse-header {{
+            background-color: #f0f9e8 !important;
+            font-weight: 600 !important;
+            color: #2d5016 !important;
+        }}
+        .p-Collapse-header:hover {{
+            background-color: #e1f2d4 !important;
+        }}
+        .p-Collapse-open > .p-Collapse-header {{
+            background-color: #76B900 !important;
+            color: white !important;
+        }}
+    </style>
+    <div style='background: linear-gradient(135deg, #76B900 0%, #5a9200 100%); 
+                color: white; padding: 25px; border-radius: 10px; margin-bottom: 20px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+        <h3 style='margin: 0 0 10px 0; font-weight: 600;'>📚 Notebook Library</h3>
+        <p style='margin: 0; font-size: 15px; opacity: 0.95;'>
+            Found <strong>{total_notebooks}</strong> notebooks across <strong>{len(notebooks)}</strong> categories
+        </p>
+        <p style='margin: 8px 0 0 0; font-size: 13px; opacity: 0.9;'>
+            Current branch: <strong>{branch}</strong>
+        </p>
     </div>
-    <div style='background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px;'>
-        <h4 style='margin: 0 0 10px 0; color: #856404;'>⚠️ Important: Using Notebooks with Data Files in Colab</h4>
-        <p style='margin: 0 0 10px 0; font-size: 13px; color: #856404;'>
-            When you click "Open in Colab", only the notebook file is loaded - <strong>data files and dependencies are NOT included</strong>.
+    <div style='background-color: #f0f9e8; border: 2px solid #76B900; border-radius: 8px; 
+                padding: 18px; margin-bottom: 20px;'>
+        <h4 style='margin: 0 0 10px 0; color: #2d5016;'>
+            💡 Using Notebooks with Data Files in Colab
+        </h4>
+        <p style='margin: 0 0 10px 0; font-size: 13px; color: #2d5016; line-height: 1.6;'>
+            When you click "Open in Colab", only the notebook file is loaded.
         </p>
-        <p style='margin: 0; font-size: 13px; color: #856404;'>
-            <strong>Solution:</strong> Click the <span style='background-color: #4CAF50; color: white; padding: 2px 6px; border-radius: 3px;'>📋 Show Setup Code</span> 
-            button, then copy and run that code in the first cell of your Colab notebook. This will:
+        <p style='margin: 0 0 8px 0; font-size: 13px; color: #2d5016;'>
+            <strong>Solution:</strong> Click <span style='background-color: #76B900; color: white; 
+            padding: 3px 8px; border-radius: 4px; font-size: 12px;'>📋 Show Setup Code</span> 
+            and run it in Colab to access all data files and dependencies.
         </p>
-        <ul style='margin: 10px 0 0 20px; font-size: 13px; color: #856404;'>
-            <li>Clone the entire repository with all data files</li>
-            <li>Navigate to the correct directory</li>
-            <li>Install required dependencies</li>
-        </ul>
     </div>
     """)
     
