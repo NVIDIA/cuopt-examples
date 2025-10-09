@@ -477,3 +477,85 @@ def create_quick_actions():
         output
     ])
 
+
+def display_interactive_ui():
+    """Display the complete interactive UI with quick actions, branch selector, and notebook browser"""
+    
+    # Quick Actions at the top for easy access
+    display(Markdown("### ⚡ Quick Actions"))
+    
+    # Create simplified quick actions for top
+    refresh_button = Button(
+        description='🔄 Refresh Browser',
+        button_style='success',
+        layout=Layout(width='180px', height='40px'),
+        tooltip='Reload the notebook list'
+    )
+    
+    update_repo_button = Button(
+        description='📥 Pull Latest Changes',
+        button_style='info',
+        layout=Layout(width='180px', height='40px'),
+        tooltip='Update repository from remote'
+    )
+    
+    show_status_button = Button(
+        description='ℹ️ Show Git Status',
+        button_style='warning',
+        layout=Layout(width='180px', height='40px'),
+        tooltip='Display git status and recent commits'
+    )
+    
+    quick_output = Output()
+    
+    def on_refresh(b):
+        quick_output.clear_output()
+        with quick_output:
+            print("🔄 Refreshing...")
+            print("✅ To refresh, please re-run this cell (Shift+Enter)")
+    
+    def on_update(b):
+        quick_output.clear_output()
+        with quick_output:
+            print("📥 Pulling latest changes...")
+            success, stdout, stderr = run_command("git pull", cwd=REPO_PATH)
+            if success:
+                print("✅ Repository updated successfully!")
+                print(stdout)
+                print("\n💡 Re-run this cell to see updated notebooks")
+            else:
+                print(f"❌ Error: {stderr}")
+    
+    def on_status(b):
+        quick_output.clear_output()
+        with quick_output:
+            print("📊 Git Status:")
+            success, stdout, stderr = run_command("git status", cwd=REPO_PATH)
+            if success:
+                print(stdout)
+            else:
+                print(f"❌ Error: {stderr}")
+            
+            print("\n📝 Recent Commits:")
+            success, stdout, stderr = run_command("git log --oneline -5", cwd=REPO_PATH)
+            if success:
+                print(stdout)
+    
+    refresh_button.on_click(on_refresh)
+    update_repo_button.on_click(on_update)
+    show_status_button.on_click(on_status)
+    
+    display(HBox([refresh_button, update_repo_button, show_status_button], 
+                 layout=Layout(justify_content='flex-start', margin='10px 0')))
+    display(quick_output)
+    
+    # Display Branch Selector
+    display(Markdown("---"))
+    display(Markdown("### 🌿 Select Branch"))
+    display(create_branch_selector())
+    
+    # Display Notebook Browser
+    display(Markdown("---"))
+    display(Markdown("### 📚 Browse and Launch Notebooks"))
+    display(create_notebook_browser())
+
