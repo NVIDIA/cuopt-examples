@@ -323,8 +323,9 @@ def create_notebook_item(nb, branch):
         <div style='padding: 5px;'>
             <strong style='font-size: 14px; color: #333;'>📓 {nb['name']}</strong>
             <div style='font-size: 11px; color: #666; margin-top: 3px;'>{nb['path']}</div>
-            <div style='font-size: 11px; color: #76B900; margin-top: 5px; font-weight: 500;'>
-                💡 In Colab: Runtime → Change Runtime Type → Hardware accelerator: GPU (or one of available GPUs)
+            <div style='font-size: 11px; color: #d9534f; margin-top: 5px; font-weight: 600; 
+                        background-color: #fff3cd; padding: 4px 8px; border-radius: 4px; border-left: 3px solid #d9534f;'>
+                ⚠️ GPU Required: Runtime → Change Runtime Type → Hardware accelerator: GPU
             </div>
         </div>
     """)
@@ -440,18 +441,22 @@ def create_notebook_browser():
         <h4 style='margin: 0 0 12px 0; color: #2d5016;'>
             💡 Running Notebooks in Google Colab
         </h4>
+        <div style='background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin-bottom: 12px; border-radius: 4px;'>
+            <strong style='color: #856404; font-size: 13px;'>⚠️ GPU Required:</strong>
+            <span style='color: #856404; font-size: 13px;'> These notebooks require a GPU. By default, Colab runs on a non-GPU instance. You must change this!</span>
+        </div>
         <div style='margin-bottom: 12px;'>
-            <strong style='color: #2d5016; font-size: 13px;'>Step 1: Enable GPU</strong>
+            <strong style='color: #2d5016; font-size: 13px;'>Step 1: Enable GPU (Required)</strong>
             <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
                 Go to <strong>Runtime → Change Runtime Type</strong> and set <strong>Hardware accelerator</strong> to <strong>GPU</strong> (select one of the available GPUs)
             </p>
         </div>
         <div>
-            <strong style='color: #2d5016; font-size: 13px;'>Step 2: Setup Data Files</strong>
+            <strong style='color: #2d5016; font-size: 13px;'>Step 2: Setup Data Files (Required)</strong>
             <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
                 Click <span style='background-color: #76B900; color: white; 
-                padding: 2px 6px; border-radius: 3px; font-size: 11px;'>📋 Show Setup Code</span> 
-                and run it to access all data files and dependencies
+                padding: 2px 6px; border-radius: 3px; font-size: 11px;'>📋 Show Setup Code</span>, 
+                copy it, paste it in a new cell at the top of your notebook, and run it BEFORE any other code
             </p>
         </div>
     </div>
