@@ -203,8 +203,9 @@ def get_setup_code(notebook_path, branch='main'):
     setup_code = f"""# ============================================================================
 # Setup code for Google Colab
 # ============================================================================
-# IMPORTANT: Run this code every time you restart your Colab session!
-# Or run it after the pip installation block is complete.
+# IMPORTANT: 
+# 1. Run this code BEFORE any other code in the notebook!
+# 2. Re-run this every time you restart your Colab session!
 # ============================================================================
 
 import os
@@ -289,7 +290,7 @@ def create_notebook_item(nb, branch):
     )
     
     instruction_label = Label(
-        value='👇 Select all text (Ctrl+A / Cmd+A) and copy (Ctrl+C / Cmd+C). ⚠️ Run this every time you restart your Colab session!',
+        value='👇 Copy this code (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C). ⚠️ Run BEFORE any other code & after each session restart!',
         layout=Layout(visibility='hidden')
     )
     
