@@ -200,7 +200,13 @@ def get_colab_url(notebook_path, branch='main'):
 def get_setup_code(notebook_path, branch='main'):
     """Generate setup code to run in Colab for accessing data files"""
     folder = str(Path(notebook_path).parent)
-    setup_code = f"""# Setup code for Google Colab
+    setup_code = f"""# ============================================================================
+# Setup code for Google Colab
+# ============================================================================
+# IMPORTANT: Run this code every time you restart your Colab session!
+# Or run it after the pip installation block is complete.
+# ============================================================================
+
 import os
 from pathlib import Path
 
@@ -283,7 +289,7 @@ def create_notebook_item(nb, branch):
     )
     
     instruction_label = Label(
-        value='👇 Select all text (Ctrl+A / Cmd+A) and copy (Ctrl+C / Cmd+C):',
+        value='👇 Select all text (Ctrl+A / Cmd+A) and copy (Ctrl+C / Cmd+C). ⚠️ Run this every time you restart your Colab session!',
         layout=Layout(visibility='hidden')
     )
     
@@ -316,6 +322,9 @@ def create_notebook_item(nb, branch):
         <div style='padding: 5px;'>
             <strong style='font-size: 14px; color: #333;'>📓 {nb['name']}</strong>
             <div style='font-size: 11px; color: #666; margin-top: 3px;'>{nb['path']}</div>
+            <div style='font-size: 11px; color: #76B900; margin-top: 5px; font-weight: 500;'>
+                💡 In Colab: Runtime → Change Runtime Type → Hardware accelerator: GPU (or one of available GPUs)
+            </div>
         </div>
     """)
     
@@ -427,17 +436,23 @@ def create_notebook_browser():
     </div>
     <div style='background-color: #f0f9e8; border: 2px solid #76B900; border-radius: 8px; 
                 padding: 18px; margin-bottom: 20px;'>
-        <h4 style='margin: 0 0 10px 0; color: #2d5016;'>
-            💡 Using Notebooks with Data Files in Colab
+        <h4 style='margin: 0 0 12px 0; color: #2d5016;'>
+            💡 Running Notebooks in Google Colab
         </h4>
-        <p style='margin: 0 0 10px 0; font-size: 13px; color: #2d5016; line-height: 1.6;'>
-            When you click "Open in Colab", only the notebook file is loaded.
-        </p>
-        <p style='margin: 0 0 8px 0; font-size: 13px; color: #2d5016;'>
-            <strong>Solution:</strong> Click <span style='background-color: #76B900; color: white; 
-            padding: 3px 8px; border-radius: 4px; font-size: 12px;'>📋 Show Setup Code</span> 
-            and run it in Colab to access all data files and dependencies.
-        </p>
+        <div style='margin-bottom: 12px;'>
+            <strong style='color: #2d5016; font-size: 13px;'>Step 1: Enable GPU</strong>
+            <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
+                Go to <strong>Runtime → Change Runtime Type</strong> and set <strong>Hardware accelerator</strong> to <strong>GPU</strong> (select one of the available GPUs)
+            </p>
+        </div>
+        <div>
+            <strong style='color: #2d5016; font-size: 13px;'>Step 2: Setup Data Files</strong>
+            <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
+                Click <span style='background-color: #76B900; color: white; 
+                padding: 2px 6px; border-radius: 3px; font-size: 11px;'>📋 Show Setup Code</span> 
+                and run it to access all data files and dependencies
+            </p>
+        </div>
     </div>
     """)
     
