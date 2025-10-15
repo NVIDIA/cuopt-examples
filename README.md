@@ -30,13 +30,14 @@ cd cuopt-examples
 ```
 
 2. Pull the cuOpt docker image:
+
 For cuda-13:
 
 ```bash
 docker pull nvidia/cuopt:25.10.0-cuda13.0-py3.13
 ```
 
-FOr cuda-12
+For cuda-12
 ```bash
 docker pull nvidia/cuopt:25.10.0-cuda12.9-py3.13
 ```
