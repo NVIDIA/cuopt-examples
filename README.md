@@ -36,7 +36,7 @@ docker pull nvidia/cuopt:25.10.*
 
 3. Run the examples:
 ```bash
-docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.05.* /bin/bash -c "pip install --user -r requirements.txt; jupyter-notebook"
+docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.05.* /bin/bash -c "pip install -r requirements.txt; jupyter-notebook"
 ```
 4. Open your browser with the link provided in the terminal, and you can see the notebooks.
 
