@@ -1,0 +1,146 @@
+---
+system:
+  env_device: cpu
+  model_device: cuda
+  tree_device: cpu
+  buffer_device: cpu
+  save_obs_on_gpu: True
+  use_tensordict: True
+  allow_wandb: False
+  run_name: null
+  no_sweep: False
+  compatibility_mode: stable_baselines  # null, 'gym', 'stable_baselines'
+
+train:
+  method: 'tree_based'
+  optimizer: 'adam'
+  seed: 0
+  deterministic_algo: True
+  gamma: 1
+  multi_gpu: False
+  block_decreasing_action: False
+  epochs: 0
+  batch_size: 1024
+  n_beams: 1
+  pretrained_fname: null
+#  pretrained_fname: 'earli/pretrained_models/model_vrp_100_L2.m'
+#  pretrained_fname: 'earli/pretrained_models/model_vrp_500_L2.m'
+#  pretrained_fname: 'earli/pretrained_models/model_vrp_100_sp.m'
+#  pretrained_fname: 'earli/pretrained_models/model_vrp_500_sp.m'
+  pretrained_run: null
+  save_model_path: 'outputs/new_vrp_model.m'
+  n_parallel_problems: 256 # should be >=1
+  learning_rate: 3e-4
+
+eval:
+#  data_file: datasets/synthetic_100.pkl
+#  data_file: datasets/synthetic_500.pkl
+  data_file: datasets/problem_instances/vrp-train-size-20-sp-n_problems-1000.pkl
+#  data_file: datasets/problem_instances/vrp-test-size-100-sp-n_problems-256.pkl
+#  data_file: datasets/problem_instances/vrp-test-size-500-sp-n_problems-256.pkl
+  max_problems: null
+  apply_local_search: True
+  deterministic_test_beam: True
+  detailed_test_log: False
+  save_full_tree: False
+  naive_greedy: False
+
+problem_setup:
+  env: vrp
+  problem_range: null  # null for all problems, otherwise [i, j] to load problems i to j-1
+  minimize_vehicles: True
+  last_return_to_depot: True
+  distance_Lp_norm: 2
+  vehicle_penalty: 0  # actual penalty = (vehicle_penalty * radius) if minimize_vehicles, else 0
+  unused_capacity_penalty: 0
+  spare_numeric_capacity: 0.1
+  single_site_visit: True
+
+representation:
+  input_repr: Graph
+  k_connectivity: 8
+  self_loops: True
+  normalize: True
+  #####################
+  # note: don't set both normalizations to True - that's empirically very bad.
+  normalize_pos_obs_like_reward: True
+  normalize_reward_by_problem_size: False
+  #####################
+  add_distance_to_head: True
+
+logger:
+  episode_stats_limit: 1000
+  logging_level: 30  # CRITICAL 50, ERROR 40, WARNING 30, INFO 20, DEBUG 10
+
+model:
+  model_type: attention
+  head_model_type: attention
+  embedding_dim: 128
+  use_pair_norm: True
+  use_batch_norm: False
+  num_intermediate_features: 64
+  use_bias: True
+  agg_type: sum
+  edge_model_layers: 1
+  value_from_depot: False
+  reset_layers_freq: 0
+  reset_last_layers: False
+  reset_last_k_modules: 0
+  single_network: False
+  attention: True
+  split_actor_and_state_models: False
+  lazy: True
+  eight_rounding: False
+
+attention_model:
+  layer_normalization: 'batch'
+  n_attention_layers_actor: 3
+  n_attention_layers_critic: 3
+  n_attention_layers_head_module: 2
+  n_attention_heads: 8
+  reweight_by_distance: False
+  reweight_function: exponential
+  use_basic_head_encoding: True
+  separate_head_and_action_model: False
+  num_head_encoder_layers: 2
+
+sampler:
+  score_to_prob: probs  # logits / probs / softplus
+  temperature: 0.3
+  diversity_penalty: 0
+  normalize_attention: True
+  tanh_clipping: 10
+  complement_k_beams_calc: False
+  use_full_action_space_calc: True
+  autoregressive: True
+
+muzero:
+  expansion_method: 'KPPO'
+  deterministic_branch_in_k_beams: True
+  zeroize_deterministic_log_prob: False
+  loss_type: 'ppo'
+  max_leaves: 10
+  data_steps_per_epoch: 256
+  hash_states: True
+  max_moves: 5000
+
+speedups:
+  use_ray: False
+  use_fabric: False
+  n_workers: 4
+  amp: False
+  fused_optimizer: True
+  compile_mode: null
+  foreach_optimizer: False
+  share_data: True
+
+cuopt:
+  use_cuopt: False
+  climbers: 2048
+
+buffer:
+  max_buffer_size: 300000
+  allow_overflow: True
+  on_policy_buffer: True
+  buffer_precision: float32
+  randomize_minibatches: False
