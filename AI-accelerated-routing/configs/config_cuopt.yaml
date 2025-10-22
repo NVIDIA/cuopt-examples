@@ -1,0 +1,65 @@
+---
+system:
+  env_device: cpu
+  model_device: cuda
+  tree_device: cpu
+  save_obs_on_gpu: True
+  use_tensordict: True
+  allow_wandb: False
+  wandb_user: nvr-israel
+  wandb_project: RLOptimizer
+  run_name: null
+  no_sweep: False
+
+speedups:
+  use_fabric: False
+
+names:
+  run_title: 'cuopt'
+  methods: ['cuOpt']
+  baseline: cuOpt
+  main_method: cuOpt
+  verbose: 2  # 0-3
+
+paths:
+  # problems: datasets/synthetic_100.pkl
+  # problems: datasets/synthetic_500.pkl
+  problems: datasets/problem_instances/vrp-test-size-20-sp-n_problems-256.pkl
+#  problems: datasets/problem_instances/vrp-test-size-100-sp-n_problems-256.pkl
+#  problems: datasets/problem_instances/vrp-test-size-500-sp-n_problems-256.pkl
+  solutions: null  # solutions file path
+  solutions_source: null  # solutions run id in wandb (instead of a local file)
+  naive_source: null
+  out_summary: test_summary
+
+problem:
+  env: vrp
+  problems_range: null  # [n_first, n_last+1] to go from problem n_first to n_last
+  last_return_to_depot: True
+  remove_last_depot_from_solution: True
+
+cuopt:
+  runtimes: [0.1]  # for problem size 100
+#  runtimes: [0.767, 1, 4]  # for problem size 500
+  fixed_vehicles: True
+  spare_vehicles: 0
+  use_reference_for_num_vehicles: False
+  normalization: null  # synthetic: 1; real: 1000
+  pull_freq: 0
+  repetitions: 1
+
+injection:
+  max_injections: null  # null / int / list-of-ints (per source)
+  can_choose_injections: False  # if True: first sort, only then filter best max_injections.
+  post_ls_solutions: 1  # 0: never; 1: in rl; 2: in both rl & naive.
+  both_rl_and_naive: 0  # 0: rl only; 1: naive if rl is suboptimal; 2: add naive to rl anyway.
+  avoid_suboptimal: True
+  sort: cost  # rand, cost | in future: diversity?
+  n_naives: 1
+  use_greedy: True
+  rl_runtime: 0  # the RL agent's inference time per problem instance - used to reduce the GA solver's time budget
+  naive_runtime: 0
+
+logger:
+  logging_level: 20  # CRITICAL 50, ERROR 40, WARNING 30, INFO 20, DEBUG 10
+  post_analysis: 0
