@@ -8,15 +8,15 @@ EARLI is a hybrid framework for solving the Vehicle Routing Problem (VRP). It us
 The [EARLI repo](https://github.com/NVlabs/EARLI) integrates EARLI's framework with NVIDIA's cuOpt genetic algorithm solver.
 This includes:
 * **A parallelisable VRP environment** compatible with both gym and stable-baselines.
-* **Training** code from a given data file of problem instances (see [training example notebook](examples/ExampleTrain.ipynb)).
+* **Training** code from a given data file of problem instances (see [training example notebook](examples/training_rl_agent_for_vrp.ipynb)).
 * **Inference** code that generates multiple solutions for a set of given problem instances.
-* **Integration to NVIDIA's cuOpt**: the generated solutions are injected to the solver as its initial population (see [inference example notebook](examples/Example.ipynb)).
+* **Integration to NVIDIA's cuOpt**: the generated solutions are injected to the solver as its initial population (see [inference example notebook](examples/initializing_cuopt_with_rl_solutions.ipynb)).
 * Several **pretrained RL models** are provided, based on synthetic training data.
 
 ### Contents
 * [Examples](#examples)
-  * [Training example notebook](examples/ExampleTrain.ipynb)
-  * [Inference example notebook](examples/Example.ipynb)
+  * [Training example notebook](examples/training_rl_agent_for_vrp.ipynb)
+  * [Inference example notebook](examples/initializing_cuopt_with_rl_solutions.ipynb)
 * [Data](#data)
 * [Cite Us](#cite-us)
 
@@ -32,9 +32,9 @@ This includes:
 
 # Examples
 
-Example for training is provided in [`ExampleTrain.ipynb`](examples/ExampleTrain.ipynb).
+Example for training is provided in [`training_rl_agent_for_vrp.ipynb`](examples/training_rl_agent_for_vrp.ipynb).
 
-Example for inference is provided in [`Example.ipynb`](examples/Example.ipynb). It can be used with our pretrained RL agents provided under `pretrained_models/`, or with a new trained agent.
+Example for inference is provided in [`initializing_cuopt_with_rl_solutions.ipynb`](examples/initializing_cuopt_with_rl_solutions.ipynb). It can be used with our pretrained RL agents provided under `pretrained_models/`, or with a new trained agent.
 
 
 # Data
