@@ -1,6 +1,5 @@
 # cuOpt Examples
-NVIDIA cuOpt is a GPU-accelerated combinatorial and linear optimization engine for solving complex route optimization problems such as Vehicle Routing and large Linear Programming problems.
-This repository contains a collection of examples demonstrating use of NVIDIA cuOpt via service APIs, SDK and Integration with other OSS optimization solvers. 
+NVIDIA cuOpt is an open-source GPU-accelerated engine for solving complex decision optimization problems, such as Mixed Integer Programming, Linear Programming, and  Vehicle Routing problems. This repository contains a collection of examples demonstrating the use of NVIDIA cuOpt via service APIs, SDK, and Integration with other OSS optimization solvers.
 
 This repository is under [MIT License](LICENSE.md)
 
