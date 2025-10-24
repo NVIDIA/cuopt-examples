@@ -204,7 +204,7 @@ def get_setup_code(notebook_path, branch='main'):
 # Setup code for Google Colab
 # ============================================================================
 # IMPORTANT: 
-# 1. Run this code BEFORE any other code in the notebook!
+# 1. Run this code in a new cell AFTER cuopt pip install!
 # 2. Re-run this every time you restart your Colab session!
 # ============================================================================
 
@@ -290,7 +290,7 @@ def create_notebook_item(nb, branch):
     )
     
     instruction_label = Label(
-        value='👇 Copy this code (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C). ⚠️ Run BEFORE any other code & after each session restart!',
+        value='👇 Copy this code (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C). ⚠️ Run in a new cell AFTER cuopt pip install & after each session restart!',
         layout=Layout(visibility='hidden')
     )
     
@@ -456,7 +456,7 @@ def create_notebook_browser():
             <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
                 Click <span style='background-color: #76B900; color: white; 
                 padding: 2px 6px; border-radius: 3px; font-size: 11px;'>📋 Show Setup Code</span>, 
-                copy it, paste it in a new cell at the top of your notebook, and run it BEFORE any other code
+                copy it, paste it in a new code block after cuopt pip install, and run it
             </p>
         </div>
     </div>
