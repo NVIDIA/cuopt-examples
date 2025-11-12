@@ -17,9 +17,9 @@ The Mean-CVaR optimization problem can be formulated as below.
 ![cvar_formulation](../images/cvar_formulation.png)
 
 # Usage
-Notebooks in this repo provide step-by-step guide on running a portfolio optimization using cuFOLIO.
-1. [Optimization with cuFOLIO](01_optimization_with_cufolio.ipynb):
-This notebook demonstrates leveraging cuFOLIO's GPU acceleration for optimization and the performance gain over CPU-based methods.
+Notebooks in this repo provide step-by-step guide on running a portfolio optimization using cuOpt.
+1. [Optimization with cuOpt](01_optimization_with_cuopt.ipynb):
+This notebook demonstrates leveraging cuOpt's GPU acceleration for optimization and the performance gain over CPU-based methods.
 2. [Backtesting](02_backtesting.ipynb):
 This notebook provides a framework for backtesting strategies, allowing users to analyze historical performance.
 3. [Advanced topics](03_advanced_topics.ipynb):

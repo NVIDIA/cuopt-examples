@@ -1,10 +1,10 @@
-# cuFOLIO: GPU-Accelerated Portfolio Optimization
+# cuOpt: GPU-Accelerated Portfolio Optimization
 
-cuFOLIO is a GPU-accelerated computing library designed to speed up investment portfolio construction and management. cuFOLIO leverages NVIDIA's cutting-edge cuOpt technology to deliver substantial performance gains in portfolio optimization.
+cuOpt is a GPU-accelerated computing library designed to speed up investment portfolio construction and management. cuOpt leverages NVIDIA's cutting-edge GPU technology to deliver substantial performance gains in portfolio optimization.
 
 Portfolio optimization is a key component of portfolio construction. The full workflow is illustrated below, and other NVIDIA libraries can be leveraged to accelerate the pre- and post-optimization steps.
 
-![cuFOLIO](./images/cufolio.png)
+![Optimization using NVIDIA cuOpt](./images/optimization.png)
 
 ## Platform Compatibility
 
@@ -24,13 +24,13 @@ GPU-accelerated solutions allow financial institutions to navigate the complexit
 
 ## cuOpt for GPU-Accelerated Optimization
 
-cuFOLIO utilizes [NVIDIA cuOpt](https://www.nvidia.com/en-us/ai-data-science/products/cuopt/), a GPU-accelerated solver for decision optimization.
+This example utilizes [NVIDIA cuOpt](https://www.nvidia.com/en-us/ai-data-science/products/cuopt/), a GPU-accelerated solver for decision optimization.
 
 [cuOpt API Support](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html): cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest users use a third-party modeling language or the cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 
 ## Optimization Methods
 
-The current implementation of cuFOLIO supports [Conditional Value-at-Risk (CVaR)](CVaR/) as the risk measure, with support for mean-variance optimization planned for future development.
+The current implementation supports [Conditional Value-at-Risk (CVaR)](CVaR/) as the risk measure, with support for mean-variance optimization planned for future development.
 
 ### CVaR
 
@@ -38,4 +38,4 @@ The current implementation of cuFOLIO supports [Conditional Value-at-Risk (CVaR)
 
 ### Mean-Variance Optimization (Future Development)
 
-[**Mean-variance optimization**](https://en.wikipedia.org/wiki/Modern_portfolio_theory), pioneered by Harry Markowitz, evaluates portfolios by balancing expected return against variance, providing a trade-off between risk and return. Mean-variance optimization is a quadratic problem and not supported in cuFOLIO at this time.
+[**Mean-variance optimization**](https://en.wikipedia.org/wiki/Modern_portfolio_theory), pioneered by Harry Markowitz, evaluates portfolios by balancing expected return against variance, providing a trade-off between risk and return. Mean-variance optimization is a quadratic problem and not supported in this implementation at this time.
