@@ -12,4 +12,4 @@ The portfolio optimization notebook solves a portfolio optimization problem wher
 
 ### 2. Advanced Notebooks
 
-[cuFOLIO_portfolio_optimization](./cuFOLIO_portfolio_optimization) contains advanced topics including frontier construction, backtesting and turnover optimization.
+[advanced_portfolio_optimization](./advanced_portfolio_optimization) contains advanced topics including frontier construction, backtesting and turnover optimization.
