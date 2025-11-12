@@ -2,7 +2,7 @@
 
 NVIDIA® cuOpt™ is an open-source GPU-accelerated engine for solving complex decision optimization problems, such as Mixed Integer Programming, Linear Programming, and  Vehicle Routing problems. This repository contains a collection of examples demonstrating the use of NVIDIA cuOpt via service APIs, SDK, and Integration with other OSS optimization packages. 
 
-This repository is under [MIT License](LICENSE.md)
+This repository is under [Apache 2.0 License](LICENSE.md)
 
 [cuOpt Docs](https://docs.nvidia.com/cuopt/)
 
