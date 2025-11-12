@@ -4,7 +4,7 @@ cuOpt is a GPU-accelerated computing library designed to speed up investment por
 
 Portfolio optimization is a key component of portfolio construction. The full workflow is illustrated below, and other NVIDIA libraries can be leveraged to accelerate the pre- and post-optimization steps.
 
-![Optimization using NVIDIA cuOpt](./images/optimization.png)
+![Optimization using NVIDIA cuOpt](./images/optimization.jpeg)
 
 ## Platform Compatibility
 
