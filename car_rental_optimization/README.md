@@ -1,122 +1,74 @@
 # Car Rental Optimization
 
-This example demonstrates how to solve a car rental optimization problem using cuOpt's GPU-accelerated linear programming solver.
+A Mixed Integer Linear Program (MILP) example for optimizing fleet size, vehicle distribution, and transfer operations to maximize weekly profit.
 
-## Problem Description
+**Adapted from**: [Gurobi's Vehicle Rental Optimization Model](https://www.gurobi.com/jupyter_models/vehicle-rental-optimization/)
 
-A car rental company operates across multiple locations and needs to make strategic decisions about:
-- **Fleet Size**: How many cars to purchase for their fleet
-- **Vehicle Distribution**: Where to position cars each day
-- **Transfer Operations**: How many cars to transfer between locations
+## Problem Overview
 
-The objective is to **maximize weekly profit** by:
-- Meeting rental demand at each location
-- Minimizing transfer costs between locations
-- Optimizing vehicle utilization
+A car rental company needs to determine:
+- How many cars to have in their fleet
+- Where to position cars each day across multiple locations
+- How many cars to transfer between locations
 
-## Problem Formulation
+**Goal**: Maximize weekly profit while meeting demand and minimizing costs
 
-This is formulated as a **Mixed Integer Linear Program (MILP)** with:
+## Model Assumptions
 
-### Decision Variables
-- `fleet_size`: Total number of cars to purchase (integer)
-- `available[d][l]`: Number of cars available at location `l` on day `d`
-- `rented[d][l]`: Number of cars rented at location `l` on day `d`
-- `transfer[d][i][j]`: Number of cars transferred from location `i` to `j` on day `d`
+**Important**: This model uses simplified assumptions suitable for same-day rental operations:
 
-### Objective Function
-Maximize:
-```
-Total Revenue - Purchase Costs - Transfer Costs
-```
+1. **Same-day rentals**: All cars rented are returned to the same location by end of day
+2. **Daily optimization**: Decisions made on a 7-day planning horizon
+3. **Known demand**: Rental demand is deterministic
+4. **Homogeneous fleet**: All vehicles are identical
+5. **Overnight transfers**: Car movements happen overnight
 
-### Constraints
-1. **Demand constraint**: Cars rented cannot exceed demand at each location
-2. **Availability constraint**: Cars rented cannot exceed available cars
-3. **Flow conservation**: Maintains vehicle balance across days and locations
-4. **Fleet size constraint**: Total cars in system cannot exceed fleet size
+This formulation works well for:
+- Car-sharing services (Zipcar, Car2Go)
+- Airport shuttle operations
+- Daily urban rental businesses
 
-## Files
+**Note**: Traditional multi-day rentals with one-way returns require additional variables and constraints (see notebook conclusion for extensions).
 
-- **`car_rental_optimization_milp.ipynb`**: Main Jupyter notebook with complete implementation
+## Notebook Contents
 
-## Key Features
+### Setup & Data
+- 4 locations (Airport, Downtown, 2 Suburbs)
+- 7-day demand patterns
+- Revenue rates by location ($75-$120/rental)
+- Weekly operational cost ($240/car)
+- Transfer costs between locations
 
-- ✅ GPU-accelerated optimization using cuOpt
-- ✅ Comprehensive visualizations with heatmaps and charts
-- ✅ Detailed business insights and performance metrics
-- ✅ Transfer operation analysis and cost breakdown
-- ✅ Utilization and demand satisfaction tracking
+### Optimization
+- **Decision Variables**: Fleet size (integer), availability, rentals, transfers (continuous)
+- **Objective**: Maximize revenue - operational costs - transfer costs
+- **Constraints**: Demand limits, availability, flow conservation, fleet capacity
 
-## Example Scenario
+### Results & Analysis
+- Optimal fleet size and allocation
+- Financial metrics (profit, margins, costs)
+- Utilization rates by location
+- Demand satisfaction tracking
+- Transfer operation schedules
+- Interactive visualizations (heatmaps, charts)
 
-The notebook includes a realistic scenario with:
-- **4 Locations**: Airport, Downtown, Suburb A, Suburb B
-- **7 Days**: Monday through Sunday
-- **Variable Demand**: Different demand patterns across locations and days
-- **Transfer Costs**: Distance-based costs for moving cars between locations
-- **Revenue Optimization**: Different rental rates for different locations
-
-## Results
-
-The optimization provides:
-
-### Financial Insights
-- Optimal fleet size recommendation
-- Expected profit and ROI
-- Revenue breakdown by location
-- Transfer cost analysis
-
-### Operational Insights
-- Daily vehicle allocation by location
-- Transfer schedules between locations
-- Utilization rates for each location
-- Demand satisfaction metrics
-
-### Visualizations
-- Demand heatmaps
-- Availability and rental patterns
-- Utilization rate analysis
-- Revenue breakdown charts
-
-## Prerequisites
-
-- NVIDIA GPU with CUDA support
-- cuOpt SDK installed
-- Python packages: `numpy`, `pandas`, `matplotlib`, `seaborn`
-
-## Usage
+## Quick Start
 
 ```bash
 jupyter notebook car_rental_optimization_milp.ipynb
 ```
 
-Or run in Google Colab with GPU runtime enabled.
+## Possible Extensions
 
-## Inspiration
+**Multi-day Rentals** (see notebook for details):
+- Track rental duration and expected returns
+- Model one-way rentals between locations
+- Add reservation system with time windows
 
-This example is adapted from the [Gurobi Vehicle Rental Optimization Model](https://www.gurobi.com/jupyter_models/vehicle-rental-optimization/), demonstrating how to solve similar problems with cuOpt's GPU-accelerated solver.
-
-## Extensions
-
-This example can be extended to include:
-- Multiple vehicle types (compact, SUV, luxury)
-- Seasonal demand variations
-- Maintenance schedules and vehicle downtime
-- Stochastic demand modeling
-- Multi-week or monthly optimization horizons
-- Dynamic pricing strategies
-- Customer reservation patterns
-
-## Related Examples
-
-- [Diet Optimization](../diet_optimization/) - Another MILP example with cuOpt
-- [Workforce Optimization](../workforce_optimization/) - Assignment problem using cuOpt
-- [Portfolio Optimization](../portfolio_optimization/) - Financial optimization with cuOpt
-
-## References
-
-- [NVIDIA cuOpt Documentation](https://docs.nvidia.com/cuopt/)
-- [Gurobi Vehicle Rental Model](https://www.gurobi.com/jupyter_models/vehicle-rental-optimization/)
-- [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples)
+**Additional**:
+- Multiple vehicle classes
+- Seasonal demand patterns
+- Maintenance scheduling
+- Stochastic demand
+- Dynamic pricing
 
