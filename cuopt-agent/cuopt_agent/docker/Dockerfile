@@ -31,6 +31,7 @@ ENV PATH="/app/cuopt_agent/.venv/bin:$PATH"
 COPY cuopt_agent/configs /app/cuopt_agent/configs
 COPY cuopt_agent/data    /app/cuopt_agent/data
 COPY skills              /app/skills
+COPY external/cuopt/skills /app/external/cuopt/skills
 COPY AGENTS.md           /app/AGENTS.md
 
 # CWD must be cuopt_agent/ so config relative paths resolve correctly:
