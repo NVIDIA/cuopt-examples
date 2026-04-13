@@ -52,6 +52,8 @@
 # =============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 CUOPT_SANDBOX="${CUOPT_SANDBOX:-cuopt}"
 CUOPT_VENV="${CUOPT_VENV:-cuopt}"
 CUOPT_HOST="${CUOPT_HOST:-}"
@@ -264,7 +266,7 @@ check_firewall() {
   echo ""
 }
 
-# ── Policy entry generation (shared by patch + apply-policy) ──────
+# ── Policy entry generation (used by apply-policy) ───────────────
 # OpenShell binary paths must be exact — globs (*, **) are silently ignored.
 # Hostname endpoints require allowed_ips so the proxy can match resolved IPs.
 generate_policy_entries() {
@@ -350,29 +352,8 @@ cmd_apply_policy() {
 
   # openshell policy get --full may include metadata fields (e.g. "Version")
   # that openshell policy set rejects. Strip any top-level keys that aren't
-  # in the accepted schema: version, filesystem_policy, landlock, process,
-  # network_policies.
-  current="$(python3 -c "
-import sys, re
-allowed = {'version', 'filesystem_policy', 'landlock', 'process', 'network_policies'}
-lines = sys.stdin.read().split('\n')
-result = []
-skip = False
-for line in lines:
-    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*):', line)
-    if m:
-        key = m.group(1)
-        if key not in allowed:
-            skip = True
-            continue
-        else:
-            skip = False
-    if skip and line and line[0].isspace():
-        continue
-    skip = False
-    result.append(line)
-print('\n'.join(result))
-" <<< "$current")"
+  # in the accepted schema.
+  current="$(python3 "$SCRIPT_DIR/utils/strip_policy_metadata.py" <<< "$current")"
 
   local entries
   entries="$(generate_policy_entries "$sandbox")"
@@ -385,60 +366,7 @@ print('\n'.join(result))
   # If our entries already exist, strip them first so they get re-added with
   # freshly detected values (Python binary, host IP).
   local merged
-  merged="$(python3 -c "
-import sys
-
-current = sys.stdin.read()
-entries = '''${entries}'''
-
-our_keys = {'pypi_public:', 'nvidia_pypi:', 'cuopt_host:'}
-
-lines = current.split('\n')
-result = []
-in_np = False
-inserted = False
-skip_block = False
-
-for line in lines:
-    stripped = line.strip()
-    is_top_level = line and not line[0].isspace() and ':' in line
-    is_np_entry = (not is_top_level and stripped and
-                   not stripped.startswith('#') and
-                   stripped.endswith(':') and
-                   line.startswith('  ') and not line.startswith('    '))
-
-    if stripped == 'network_policies:' or stripped.startswith('network_policies:'):
-        in_np = True
-        result.append(line)
-        continue
-
-    if in_np and is_np_entry and stripped in our_keys:
-        skip_block = True
-        continue
-
-    if skip_block:
-        if is_np_entry or (is_top_level and ':' in line):
-            skip_block = False
-        else:
-            continue
-
-    if in_np and is_top_level and not inserted:
-        result.append(entries)
-        inserted = True
-        in_np = False
-
-    result.append(line)
-
-if in_np and not inserted:
-    result.append(entries)
-
-if not any('network_policies' in l for l in lines):
-    result.append('')
-    result.append('network_policies:')
-    result.append(entries)
-
-print('\n'.join(result))
-" <<< "$current")"
+  merged="$(python3 "$SCRIPT_DIR/utils/merge_policy_entries.py" --entries "$entries" <<< "$current")"
 
   local tmpfile
   tmpfile="$(mktemp /tmp/cuopt-policy-XXXXXX.yaml)"
@@ -478,8 +406,7 @@ cmd_install() {
         echo "  Policy expects: $policy_python"
         echo ""
         echo "  Network requests from Python will be blocked (403 Forbidden)."
-        echo "  Fix: re-run 'patch' to update the policy, then 'onboard' or 'apply-policy':"
-        echo "    $0 patch"
+        echo "  Fix: re-run apply-policy to update the policy:"
         echo "    $0 apply-policy $sandbox"
         echo ""
       fi
@@ -596,9 +523,7 @@ exit
 # ── install-skill ─────────────────────────────────────────────────
 cmd_install_skill() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local skills_dir="$script_dir/openclaw-skills"
+  local skills_dir="$SCRIPT_DIR/openclaw-skills"
 
   if [[ ! -d "$skills_dir" ]]; then
     echo "error: skills directory not found at $skills_dir" >&2
@@ -672,7 +597,7 @@ GUARDRAIL
   echo "Skills installed."
 
   # Upload gRPC probe script
-  local probe="$script_dir/probe_grpc.py"
+  local probe="$SCRIPT_DIR/probe_grpc.py"
   if [[ -f "$probe" ]]; then
     echo "  Uploading probe_grpc.py"
     if ! openshell sandbox upload "$sandbox" "$probe" "/sandbox/probe_grpc.py" 2>&1; then
