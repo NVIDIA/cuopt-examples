@@ -122,46 +122,78 @@ Each subdirectory containing a `SKILL.md` will be uploaded. Then re-run:
 
 ## Starting the cuOpt server
 
-The cuOpt release includes two server interfaces. You can run either or both:
+The cuOpt release includes two server interfaces. Run either or both via the
+official cuOpt container — the sandbox expects them at ports 5000 (REST) and
+5001 (gRPC).
 
-| Interface | Port | Protocol | How to start |
-|-----------|------|----------|-------------|
-| REST (Python) | 5000 | HTTP | `python3 -m cuopt_server.cuopt_service` |
-| gRPC (native) | 5001 | HTTP/2 | `cuopt_grpc_server` (included in `libcuopt`) |
+| Interface | Host port | Container default | Selector |
+|-----------|-----------|-------------------|----------|
+| REST (Python) | 5000 | `CUOPT_SERVER_PORT` (8000) | unset / `CUOPT_SERVER_TYPE=rest` |
+| gRPC (native) | 5001 | 5001 | `CUOPT_SERVER_TYPE=grpc` |
 
-Install the server package (replace `cu12` with your CUDA version):
+### Prerequisites
+
+- NVIDIA driver + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host (`nvidia-ctk --version`).
+- Docker can see the GPU: `docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi`.
+
+Pick an image tag that matches your CUDA + Python; the latest stable line is
+`nvidia/cuopt:latest-cuda13.0-py3.13` (Docker Hub, no auth needed). The same
+image is published on NGC at `nvcr.io/nvidia/cuopt/cuopt:<tag>`.
 
 ```bash
-pip install cuopt-server-cu12 --extra-index-url=https://pypi.nvidia.com
+export CUOPT_IMAGE=nvidia/cuopt:latest-cuda13.0-py3.13
+docker pull "$CUOPT_IMAGE"
 ```
 
-To start the Python REST server:
+### REST server (port 5000)
 
 ```bash
-python3 -m cuopt_server.cuopt_service
+docker run -d --name cuopt-rest --gpus all --restart unless-stopped \
+  -p 5000:5000 -e CUOPT_SERVER_PORT=5000 \
+  "$CUOPT_IMAGE"
 ```
 
-To start the gRPC server:
+Verify:
 
 ```bash
-cuopt_grpc_server
-```
-
-Or run a server in the cuOpt container (see NVIDIA cuOpt documentation for container
-instructions).
-
-Verify what's running:
-
-```bash
-# REST server
 curl http://localhost:5000/cuopt/health
+```
 
-# gRPC server
+### gRPC server (port 5001)
+
+```bash
+docker run -d --name cuopt-grpc --gpus all --restart unless-stopped \
+  -p 5001:5001 -e CUOPT_SERVER_TYPE=grpc \
+  "$CUOPT_IMAGE"
+```
+
+Verify (from the host or the sandbox):
+
+```bash
 python3 probe_grpc.py
 ```
 
+### Running both at once
+
+The two `docker run` commands above are independent — running both yields
+`cuopt-rest` on 5000 and `cuopt-grpc` on 5001. They can share the same GPU.
+
 Leave the server(s) running — the sandbox connects through
 `host.openshell.internal` on port 5000 (REST) and/or 5001 (gRPC).
+
+### Stopping or upgrading
+
+```bash
+docker stop cuopt-rest cuopt-grpc && docker rm cuopt-rest cuopt-grpc
+docker pull "$CUOPT_IMAGE"   # then re-run the start commands
+```
+
+> Running the server natively (without Docker) is supported — install
+> `cuopt-server-cu12` from `https://pypi.nvidia.com` and start
+> `python3 -m cuopt_server.cuopt_service` (REST) or `cuopt_grpc_server`
+> (gRPC). See the [upstream cuOpt docs](https://docs.nvidia.com/cuopt/) for
+> details. The container path above is preferred because it pins CUDA and
+> the Python toolchain to the cuOpt release.
 
 ## Troubleshooting
 
