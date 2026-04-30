@@ -34,7 +34,7 @@ The 'add' command takes a sandbox name as an argument. Here we use 'cuopt' but
 it can be any existing sandbox.
 
 ```bash
-./cuopt_claw/nemoclaw_cuopt_setup.sh add cuopt
+./nemoclaw_cuopt_setup.sh add cuopt
 ```
 
 > **Watch for the firewall warning banner.** If UFW is active and ports 5000/5001
@@ -46,8 +46,9 @@ it can be any existing sandbox.
 
 - **add** — Add cuOpt to an existing sandbox: apply-policy → install → install-skill → test
 - **apply-policy** — Merges cuOpt network rules into a running sandbox's policy
-- **install** — Creates a Python venv (`/sandbox/cuopt`), installs `cuopt_sh_client`, `cuopt-cu12`, and `grpcio`, and configures `.bashrc` with the server alias
-- **install-skill** — Uploads skill files from `cuopt_claw/openclaw-skills/` into the sandbox
+- **install** — Creates a Python venv (`/sandbox/.openclaw-data/cuopt`), installs `cuopt_sh_client`, `cuopt-cu12`, and `grpcio`, and stamps an auto-activation block into `/sandbox/.bashrc`
+- **install-bashrc** — Re-stamps the `/sandbox/.bashrc` auto-activation block without reinstalling the venv (use after changing `CUOPT_HOST`, `CUOPT_PORT`, or `CUOPT_VENV`)
+- **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox
 - **test** — Smoke tests PyPI access and cuOpt server connectivity from inside the sandbox
 
 ## Getting cuOpt data into the sandbox
@@ -95,29 +96,29 @@ openshell term
 
 ## Adding cuopt to an existing venv in a sandbox
 
-To install cuopt into an existing venv instead of creating a new one (e.g. `/sandbox/.venv`):
+To install cuopt into an existing venv instead of creating a new one (e.g. `/sandbox/.openclaw-data/.venv`):
 
 ```bash
-CUOPT_VENV=.venv ./cuopt_claw/nemoclaw_cuopt_setup.sh add my-sandbox
+CUOPT_VENV=.openclaw-data/.venv ./nemoclaw_cuopt_setup.sh add my-sandbox
 ```
 
 ## Updating skills
 
-To modify agent skills, edit or add files under `cuopt_claw/openclaw-skills/`.
+To modify agent skills, edit or add files under `openclaw-skills/`.
 Each subdirectory containing a `SKILL.md` will be uploaded. Then re-run:
 
 ```bash
-./cuopt_claw/nemoclaw_cuopt_setup.sh install-skill cuopt
+./nemoclaw_cuopt_setup.sh install-skill cuopt
 ```
 
 ## File locations
 
 | What | Path |
 |------|------|
-| Setup script | `cuopt_claw/nemoclaw_cuopt_setup.sh` |
-| gRPC probe | `cuopt_claw/probe_grpc.py` (uploaded to `/sandbox/probe_grpc.py`) |
-| Skill source files | `cuopt_claw/openclaw-skills/cuopt/SKILL.md` |
-| cuOpt venv in sandbox | `/sandbox/cuopt/` |
+| Setup script | `cuopt_on_nemoclaw/nemoclaw_cuopt_setup.sh` |
+| gRPC probe | `cuopt_on_nemoclaw/probe_grpc.py` (uploaded to `/sandbox/.openclaw-data/probe_grpc.py`) |
+| Skill source files | `cuopt_on_nemoclaw/openclaw-skills/cuopt/SKILL.md` |
+| cuOpt venv in sandbox | `/sandbox/.openclaw-data/cuopt/` |
 
 ## Starting the cuOpt server
 
@@ -168,9 +169,9 @@ Leave the server(s) running — the sandbox connects through
 
 - Verify the cuOpt server is running:
   - REST: `curl http://localhost:5000/cuopt/health`
-  - gRPC: `python3 probe_grpc.py` (or from inside the sandbox: `python3 /sandbox/probe_grpc.py`)
+  - gRPC: `python3 probe_grpc.py` (or from inside the sandbox: `python3 /sandbox/.openclaw-data/probe_grpc.py`)
 - Check the firewall: `sudo ufw status` — ports 5000 and 5001 must be open on Docker bridges
-- Re-run `./cuopt_claw/nemoclaw_cuopt_setup.sh apply-policy cuopt` to repair the network policy
+- Re-run `./nemoclaw_cuopt_setup.sh apply-policy cuopt` to repair the network policy
 
 ## Advanced troubleshooting
 

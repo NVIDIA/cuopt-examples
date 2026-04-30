@@ -27,20 +27,24 @@ Key upstream skills:
 
 ## Environment
 
-The cuOpt client and SDK are installed in a Python virtual environment at `/sandbox/cuopt`.
-Activate it before any cuOpt work:
+The cuOpt client and SDK are installed in a Python virtual environment at
+`/sandbox/.openclaw-data/cuopt` (the default NemoClaw filesystem policy
+marks `/sandbox` itself as read-only, so the venv lives in the writable
+subtree under `/sandbox/.openclaw-data/`).
+
+The sandbox's `/sandbox/.bashrc` auto-activates the venv and sets
+`CUOPT_SERVER`, so in most interactive sessions no manual activation is
+needed. To activate explicitly (scripts, non-interactive shells):
 
 ```bash
-source /sandbox/cuopt/bin/activate
+source /sandbox/.openclaw-data/cuopt/bin/activate
 ```
 
-If the venv doesn't exist, create it:
-
-```bash
-python3 -m venv /sandbox/cuopt
-source /sandbox/cuopt/bin/activate
-pip install cuopt-sh-client cuopt-cu12==26.04 grpcio --extra-index-url=https://pypi.nvidia.com
-```
+If the venv doesn't exist, ask the operator to run the host-side setup
+script (`./nemoclaw_cuopt_setup.sh add <sandbox-name>`); the sandbox user
+cannot recreate it directly because the packages live under the
+`openclaw-sandbox` network policy and the venv path must match the
+operator's configuration.
 
 ## Networking — CRITICAL
 
@@ -66,10 +70,11 @@ whichever is available. If both are up, either path works.
 
 Follow this checklist:
 
-1. **Activate the venv**: `source /sandbox/cuopt/bin/activate`
+1. **Activate the venv** (usually already active via `.bashrc`):
+   `source /sandbox/.openclaw-data/cuopt/bin/activate`
 2. **Probe gRPC (port 5001)**:
    ```bash
-   python3 /sandbox/probe_grpc.py
+   python3 /sandbox/.openclaw-data/probe_grpc.py
    ```
    Expected: `server is reachable (host.openshell.internal:5001)`.
    If reachable, you can use the **Python SDK** or **`cuopt_cli`** (set
@@ -188,10 +193,10 @@ solution = client.get_optimized_routes(data)
 | `cudaErrorInsufficientDriver` or CUDA errors | Accidentally invoked local solve instead of remote service | Set `CUOPT_REMOTE_HOST=host.openshell.internal` and `CUOPT_REMOTE_PORT=5001` before solving |
 | `403 Forbidden` | Wrong address or sandbox policy missing port | Use `host.openshell.internal`, not `localhost`. If address is correct, ask operator to run `nemoclaw_cuopt_setup.sh apply-policy` |
 | `Connection refused` on `:5000` | REST service not running or host firewall blocking the port | Check if REST is needed; gRPC alone (5001) is sufficient for LP/MILP. If REST is needed, ask operator to start it |
-| `server is not reachable` from `probe_grpc.py` | gRPC service not running, port 5001 not in sandbox policy, or host firewall | Verify gRPC server is running on host; ask operator to check policy and firewall |
+| `server is not reachable` from `/sandbox/.openclaw-data/probe_grpc.py` | gRPC service not running, port 5001 not in sandbox policy, or host firewall | Verify gRPC server is running on host; ask operator to check policy and firewall |
 | Connection timeout / hang | Server not running or host firewall blocking Docker | Ask operator to verify from host: `ss -tlnp \| grep 500` |
 | Timeout through `10.200.0.1:3128` | Sandbox proxy cannot reach the destination | Ask operator to verify sandbox network policy includes the cuOpt ports |
-| `ModuleNotFoundError` | Venv not activated | Run `source /sandbox/cuopt/bin/activate` |
+| `ModuleNotFoundError` | Venv not activated | Run `source /sandbox/.openclaw-data/cuopt/bin/activate` |
 | No `Using remote GPU backend` in output | Remote env vars not set or not picked up | Ensure `CUOPT_REMOTE_HOST` and `CUOPT_REMOTE_PORT` are exported before the Python process starts |
 
 ---
