@@ -17,20 +17,26 @@
 # NemoClaw cuOpt sandbox setup
 #
 # Subcommands:
-#   add [NAME]            Add cuOpt to a sandbox: policy + install + skill + test.
-#   apply-policy [NAME]   Add cuOpt network policy to a running sandbox.
-#   install [NAME]        Install cuOpt packages in /sandbox/cuopt venv.
-#   install-skill [NAME]  Upload the cuOpt skill into the sandbox.
-#   test [NAME]           Smoke-test PyPI + cuOpt server reachability.
+#   add [NAME]             Add cuOpt to a sandbox: policy + install + skill + test.
+#   apply-policy [NAME]    Add cuOpt network policy to a running sandbox.
+#   install [NAME]         Install cuOpt packages in the sandbox venv and stamp
+#                          an auto-activation block into /sandbox/.bashrc.
+#   install-bashrc [NAME]  Re-stamp the auto-activation block in /sandbox/.bashrc
+#                          without reinstalling the venv (useful after changing
+#                          CUOPT_HOST, CUOPT_PORT, or CUOPT_VENV).
+#   install-skill [NAME]   Upload the cuOpt skill into the sandbox.
+#   test [NAME]            Smoke-test PyPI + cuOpt server reachability.
 #
 # Flags:
 #   -y, --yes       Skip confirmation prompts (for CI/CD).
-#   --activate      Add venv auto-activation to .bashrc (install only;
-#                   always on for 'add').
 #
 # Environment:
 #   CUOPT_SANDBOX   Sandbox name             (default: cuopt)
-#   CUOPT_VENV      Venv directory name under /sandbox/  (default: cuopt)
+#   CUOPT_VENV      Venv directory path under /sandbox/
+#                   (default: .openclaw-data/cuopt). The default NemoClaw
+#                   filesystem policy only allows writes under
+#                   /sandbox/.openclaw-data and /sandbox/.nemoclaw, so the
+#                   venv must live under one of those.
 #   CUOPT_HOST      cuOpt server hostname    (default: "" = localhost only)
 #                   Set to a hostname, IP, or k8s service to allow remote cuOpt.
 #                   Localhost entries (host.openshell.internal / host.docker.internal)
@@ -45,24 +51,134 @@
 #                    172.17.0.1). Needed for OpenShell allowed_ips.
 #
 # Examples:
-#   ./cuopt_claw/nemoclaw_cuopt_setup.sh add cuopt        # Add cuOpt to sandbox "cuopt"
-#   ./cuopt_claw/nemoclaw_cuopt_setup.sh add my-assistant  # Add cuOpt to any sandbox
-#   ./cuopt_claw/nemoclaw_cuopt_setup.sh apply-policy bob  # Just fix network policy
-#   ./cuopt_claw/nemoclaw_cuopt_setup.sh test cuopt        # Re-run smoke test
+#   ./nemoclaw_cuopt_setup.sh add cuopt        # Add cuOpt to sandbox "cuopt"
+#   ./nemoclaw_cuopt_setup.sh add my-assistant # Add cuOpt to any sandbox
+#   ./nemoclaw_cuopt_setup.sh apply-policy bob # Just fix network policy
+#   ./nemoclaw_cuopt_setup.sh test cuopt       # Re-run smoke test
+#
+# Version compatibility:
+#   The TESTED_NEMOCLAW_VERSION / TESTED_OPENSHELL_VERSION constants below
+#   pin the NemoClaw and OpenShell releases this script was verified
+#   against. At startup the script prints a warning banner on stderr if
+#   the installed tools differ (non-fatal). To install the exact tested
+#   NemoClaw build:
+#
+#     NEMOCLAW_INSTALL_TAG=v<tested-version> \
+#       curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
+#
+#   Silence the banner with NEMOCLAW_VERSION_CHECK=0.
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CUOPT_SANDBOX="${CUOPT_SANDBOX:-cuopt}"
-CUOPT_VENV="${CUOPT_VENV:-cuopt}"
+# The default NemoClaw sandbox filesystem policy marks /sandbox as read-only
+# and only allows writes under /sandbox/.openclaw-data and /sandbox/.nemoclaw
+# (Landlock, best_effort). Putting the venv directly at /sandbox/cuopt fails
+# with Permission denied on current sandbox-base images.
+CUOPT_VENV="${CUOPT_VENV:-.openclaw-data/cuopt}"
 CUOPT_HOST="${CUOPT_HOST:-}"
 CUOPT_PORT="${CUOPT_PORT:-5000}"
 CUOPT_GRPC_PORT="${CUOPT_GRPC_PORT:-5001}"
 CUOPT_PYTHON_BIN="${CUOPT_PYTHON_BIN:-}"
 CUOPT_HOST_IP="${CUOPT_HOST_IP:-}"
 FORCE=false
-ACTIVATE=false
+
+# ── Tested NemoClaw / OpenShell versions ──────────────────────────
+# The versions this script was last verified against. Bumped when we test
+# a newer release end-to-end. Used by check_versions() to surface a
+# non-fatal warning banner if the installed tools drift ahead.
+#
+# To install the exact tested NemoClaw build:
+#   NEMOCLAW_INSTALL_TAG=v${TESTED_NEMOCLAW_VERSION} \
+#     curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
+#
+# Silence the banner with NEMOCLAW_VERSION_CHECK=0.
+TESTED_NEMOCLAW_VERSION="0.0.30"
+TESTED_OPENSHELL_VERSION="0.0.36"
+
+# ── NemoClaw / OpenShell version compatibility check ─────────────
+# Non-fatal. Prints a warning banner when the installed tool version
+# differs from the version this script was tested against, and points the
+# user at NEMOCLAW_INSTALL_TAG for pinning. Call once from main().
+#
+# Parses the first X.Y.Z substring from `<tool> --version` output; tolerant
+# of a leading 'v', extra columns, or surrounding text.
+check_versions() {
+  if [[ "${NEMOCLAW_VERSION_CHECK:-1}" == "0" ]]; then
+    return 0
+  fi
+
+  local issues=()
+
+  local nc_raw nc_cur
+  if command -v nemoclaw >/dev/null 2>&1; then
+    nc_raw="$(nemoclaw --version 2>/dev/null || true)"
+    nc_cur="$(echo "$nc_raw" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/^v//')"
+    if [[ -z "$nc_cur" ]]; then
+      issues+=("could not parse nemoclaw version from: ${nc_raw:-<empty>}")
+    elif [[ "$nc_cur" != "$TESTED_NEMOCLAW_VERSION" ]]; then
+      local newest
+      newest="$(printf '%s\n%s\n' "$TESTED_NEMOCLAW_VERSION" "$nc_cur" | sort -V | tail -1)"
+      if [[ "$newest" == "$nc_cur" ]]; then
+        issues+=("nemoclaw v${nc_cur} is NEWER than tested v${TESTED_NEMOCLAW_VERSION}")
+      else
+        issues+=("nemoclaw v${nc_cur} is OLDER than tested v${TESTED_NEMOCLAW_VERSION}")
+      fi
+    fi
+  else
+    issues+=("nemoclaw not on PATH")
+  fi
+
+  local os_raw os_cur
+  if command -v openshell >/dev/null 2>&1; then
+    os_raw="$(openshell --version 2>/dev/null || true)"
+    os_cur="$(echo "$os_raw" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/^v//')"
+    if [[ -z "$os_cur" ]]; then
+      issues+=("could not parse openshell version from: ${os_raw:-<empty>}")
+    elif [[ "$os_cur" != "$TESTED_OPENSHELL_VERSION" ]]; then
+      local newest
+      newest="$(printf '%s\n%s\n' "$TESTED_OPENSHELL_VERSION" "$os_cur" | sort -V | tail -1)"
+      if [[ "$newest" == "$os_cur" ]]; then
+        issues+=("openshell v${os_cur} is NEWER than tested v${TESTED_OPENSHELL_VERSION}")
+      else
+        issues+=("openshell v${os_cur} is OLDER than tested v${TESTED_OPENSHELL_VERSION}")
+      fi
+    fi
+  else
+    issues+=("openshell not on PATH")
+  fi
+
+  if [[ ${#issues[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  # Print a compact banner on stderr so it is visible but does not poison
+  # stdout (which some subcommands pipe to `openshell sandbox connect`).
+  {
+    echo ""
+    echo "┌─ NemoClaw/OpenShell version notice ─────────────────────────────────┐"
+    for msg in "${issues[@]}"; do
+      printf "│  %-67s│\n" "$msg"
+    done
+    printf "│  %-67s│\n" ""
+    printf "│  %-67s│\n" "This script was tested with:"
+    printf "│  %-67s│\n" "  nemoclaw  v${TESTED_NEMOCLAW_VERSION}"
+    printf "│  %-67s│\n" "  openshell v${TESTED_OPENSHELL_VERSION}"
+    printf "│  %-67s│\n" ""
+    printf "│  %-67s│\n" "NemoClaw moves quickly; policy schema, gateway container"
+    printf "│  %-67s│\n" "name, or sandbox base image may have changed. To pin to the"
+    printf "│  %-67s│\n" "tested build:"
+    printf "│  %-67s│\n" ""
+    printf "│  %-67s│\n" "  NEMOCLAW_INSTALL_TAG=v${TESTED_NEMOCLAW_VERSION} \\"
+    printf "│  %-67s│\n" "    curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash"
+    printf "│  %-67s│\n" ""
+    printf "│  %-67s│\n" "Silence this notice with NEMOCLAW_VERSION_CHECK=0."
+    echo "└─────────────────────────────────────────────────────────────────────┘"
+    echo ""
+  } >&2
+}
 
 # ── Locate NemoClaw package root ─────────────────────────────────
 find_nemoclaw_root() {
@@ -418,28 +534,124 @@ cmd_install() {
     "source ${venv}/bin/activate"
     "pip install cuopt-sh-client cuopt-cu12==26.04 grpcio --extra-index-url=https://pypi.nvidia.com"
     "python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__version__)\""
+    "exit"
   )
+
+  printf '%s\n' "${commands[@]}" | openshell sandbox connect "$sandbox"
 
   local cuopt_ip="host.openshell.internal"
   [[ -n "$CUOPT_HOST" ]] && cuopt_ip="$CUOPT_HOST"
 
-  if [[ "$ACTIVATE" == true ]]; then
-    commands+=(
-      ""
-      "if ! grep -q '${venv}/bin/activate' /sandbox/.bashrc 2>/dev/null; then"
-      "  echo '' >> /sandbox/.bashrc"
-      "  echo '# cuOpt environment (added by nemoclaw_cuopt_setup.sh)' >> /sandbox/.bashrc"
-      "  echo 'if [ -f ${venv}/bin/activate ]; then source ${venv}/bin/activate; fi' >> /sandbox/.bashrc"
-      "  echo 'export CUOPT_SERVER=${cuopt_ip}:${CUOPT_PORT}' >> /sandbox/.bashrc"
-      "  echo 'alias cuopt_sh=\"cuopt_sh -i ${cuopt_ip} -p ${CUOPT_PORT}\"' >> /sandbox/.bashrc"
-      "  echo 'Added venv auto-activation + cuopt_sh alias to /sandbox/.bashrc'"
-      "fi"
-    )
+  if install_bashrc_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"; then
+    cat <<EOF
+Install complete. Auto-activation is installed in /sandbox/.bashrc
+(mode 0444, Landlock read-only). Reconnect with:
+
+    nemoclaw ${sandbox} connect
+
+The venv, CUOPT_SERVER, and cuopt_sh alias will be active in every shell.
+EOF
+  else
+    cat <<EOF
+Install complete, but auto-activation could not be installed in
+/sandbox/.bashrc (see warning above). Activate manually per session:
+
+    nemoclaw ${sandbox} connect
+    source ${venv}/bin/activate
+    export CUOPT_SERVER=${cuopt_ip}:${CUOPT_PORT}
+EOF
+  fi
+}
+
+# ── install-bashrc ────────────────────────────────────────────────
+# Re-stamp /sandbox/.bashrc with the current CUOPT_VENV / CUOPT_HOST / CUOPT_PORT
+# values without touching the venv. Useful after changing the cuOpt server.
+cmd_install_bashrc() {
+  local sandbox="${1:-$CUOPT_SANDBOX}"
+  local cuopt_ip="host.openshell.internal"
+  [[ -n "$CUOPT_HOST" ]] && cuopt_ip="$CUOPT_HOST"
+  install_bashrc_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"
+}
+
+# ── install_bashrc_activation (helper) ────────────────────────────
+# Drop a managed auto-activation block into /sandbox/.bashrc as root via the
+# gateway container, the same escape hatch cmd_install_skill already uses for
+# the cuopt-setup guardrail. The default NemoClaw filesystem policy marks
+# /sandbox as Landlock read-only, so a file written here can be sourced by the
+# sandbox user's shell but cannot be modified by the agent. The kubectl-exec'd
+# root process is NOT in the user's Landlock process tree so it can write.
+#
+# The block is delimited by stable begin/end markers so re-stamping is exact
+# (no fragile partial-line matching).
+#
+# Returns 0 on success, 1 if docker/gateway is unavailable.
+install_bashrc_activation() {
+  local sandbox="$1"
+  local cuopt_ip="$2"
+  local cuopt_port="$3"
+  local venv="/sandbox/${CUOPT_VENV}"
+  local gw="${GATEWAY_CONTAINER:-openshell-cluster-nemoclaw}"
+  local ns="${K8S_NAMESPACE:-openshell}"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "  warning: docker not found on host — cannot install /sandbox/.bashrc" >&2
+    return 1
   fi
 
-  commands+=("exit")
-  printf '%s\n' "${commands[@]}" | openshell sandbox connect "$sandbox"
-  echo "Install complete."
+  # The inner script runs as root inside the sandbox pod via kubectl exec.
+  # Base64 over the whole payload so we don't have to fight three layers of
+  # shell quoting (bash here-doc -> docker exec -> kubectl exec -- sh -c).
+  # Variables we want expanded NOW (outer bash): ${venv}, ${cuopt_ip},
+  # ${cuopt_port}. Variables we want expanded by the inner sh: escaped with \$.
+  local inner_script
+  inner_script=$(cat <<INNER_EOF
+set -eu
+bashrc=/sandbox/.bashrc
+begin='# >>> cuopt activation (managed by nemoclaw_cuopt_setup.sh) >>>'
+end='# <<< cuopt activation <<<'
+
+[ -f "\$bashrc" ] || : > "\$bashrc"
+chmod 0644 "\$bashrc"
+
+# Idempotent re-stamp: strip any previous block between the markers.
+if grep -qF "\$begin" "\$bashrc" 2>/dev/null; then
+  b=\$(grep -nF "\$begin" "\$bashrc" | head -1 | cut -d: -f1)
+  e=\$(grep -nF "\$end"   "\$bashrc" | head -1 | cut -d: -f1)
+  if [ -n "\$b" ] && [ -n "\$e" ] && [ "\$e" -ge "\$b" ]; then
+    sed -i "\${b},\${e}d" "\$bashrc"
+  fi
+fi
+
+cat >> "\$bashrc" <<BASHRC_EOF
+\$begin
+if [ -f ${venv}/bin/activate ]; then
+  . ${venv}/bin/activate
+  export CUOPT_SERVER=${cuopt_ip}:${cuopt_port}
+  alias cuopt_sh='cuopt_sh -i ${cuopt_ip} -p ${cuopt_port}'
+fi
+\$end
+BASHRC_EOF
+
+# sed -i and 'cat > file' (for a freshly-created file) end up as root:root.
+# Restore the NemoClaw default (sandbox:sandbox) so 'ls -l' looks normal.
+chown sandbox:sandbox "\$bashrc" 2>/dev/null || true
+chmod 0444 "\$bashrc"
+INNER_EOF
+)
+
+  local inner_b64
+  inner_b64=$(printf '%s' "$inner_script" | base64 -w 0)
+
+  if docker exec "$gw" kubectl exec -n "$ns" "$sandbox" -- \
+       sh -c "echo '$inner_b64' | base64 -d | sh" >/dev/null 2>&1; then
+    echo "  Installed cuOpt auto-activation in /sandbox/.bashrc (mode 0444, Landlock read-only)"
+    return 0
+  fi
+
+  echo "  warning: could not install /sandbox/.bashrc via gateway" >&2
+  echo "    gateway container: $gw   sandbox namespace: $ns" >&2
+  echo "    override with GATEWAY_CONTAINER=... / K8S_NAMESPACE=..." >&2
+  return 1
 }
 
 # ── test ──────────────────────────────────────────────────────────
@@ -486,7 +698,7 @@ python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__
     sandbox_cmds+="
 echo ''
 echo '--- gRPC server (${grpc_host}:${CUOPT_GRPC_PORT}) ---'
-CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} python3 /sandbox/probe_grpc.py || true
+CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} python3 /sandbox/.openclaw-data/probe_grpc.py || true
 "
   fi
 
@@ -596,25 +808,21 @@ GUARDRAIL
 
   echo "Skills installed."
 
-  # Upload gRPC probe script
+  # Upload gRPC probe script. Targets /sandbox/.openclaw-data/ because the
+  # default NemoClaw filesystem policy marks /sandbox as read-only; the old
+  # target /sandbox/probe_grpc.py fails with Permission denied.
+  #
+  # NOTE: `openshell sandbox upload` treats DEST as a DIRECTORY and lands
+  # the file at DEST/<basename(SRC)>. Passing a file path as DEST would
+  # create a directory with that name containing the real file inside, so
+  # we pass the parent directory and let the basename come from the source.
   local probe="$SCRIPT_DIR/probe_grpc.py"
+  local probe_dir="/sandbox/.openclaw-data"
+  local probe_dest="${probe_dir}/$(basename "$probe")"
   if [[ -f "$probe" ]]; then
-    echo "  Uploading probe_grpc.py"
-    if ! openshell sandbox upload "$sandbox" "$probe" "/sandbox/probe_grpc.py" 2>&1; then
-      echo "  Upload failed — falling back to inline copy via sandbox connect"
-      local probe_content
-      probe_content="$(cat "$probe")"
-      printf '%s\n' \
-        "cat > /sandbox/probe_grpc.py << 'PROBE_EOF'" \
-        "$probe_content" \
-        "PROBE_EOF" \
-        "exit" \
-      | openshell sandbox connect "$sandbox" >/dev/null 2>&1
-      if openshell sandbox connect "$sandbox" -- test -f /sandbox/probe_grpc.py 2>/dev/null; then
-        echo "  probe_grpc.py written via fallback"
-      else
-        echo "  warning: failed to write probe_grpc.py into sandbox" >&2
-      fi
+    echo "  Uploading probe_grpc.py -> ${probe_dest}"
+    if ! openshell sandbox upload "$sandbox" "$probe" "${probe_dir}/" 2>&1; then
+      echo "  warning: failed to upload probe_grpc.py into sandbox" >&2
     fi
   else
     echo "  warning: probe_grpc.py not found at $probe — skipping" >&2
@@ -625,7 +833,6 @@ GUARDRAIL
 # ── add (existing sandbox shortcut) ───────────────────────────────
 cmd_add() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
-  ACTIVATE=true
   cmd_apply_policy "$sandbox"
   cmd_install "$sandbox"
   cmd_install_skill "$sandbox"
@@ -635,7 +842,7 @@ cmd_add() {
 
 # ── dispatch ──────────────────────────────────────────────────────
 usage() {
-  sed -n '2,37p' "$0"
+  sed -n '16,70p' "$0"
 }
 
 main() {
@@ -644,7 +851,6 @@ main() {
   for arg in "$@"; do
     case "$arg" in
       -y|--yes) FORCE=true ;;
-      --activate) ACTIVATE=true ;;
       *) args+=("$arg") ;;
     esac
   done
@@ -652,12 +858,20 @@ main() {
 
   local sub="${1:-}"
   shift || true
+
+  # Skip the version banner for help/usage so it doesn't clutter docs output.
   case "${sub}" in
-    apply-policy)  cmd_apply_policy "${1:-}" ;;
-    install)       cmd_install "${1:-}" ;;
-    install-skill) cmd_install_skill "${1:-}" ;;
-    test)          cmd_test "${1:-}" ;;
-    add)           cmd_add "${1:-}" ;;
+    help|-h|--help|"") ;;
+    *) check_versions ;;
+  esac
+
+  case "${sub}" in
+    apply-policy)   cmd_apply_policy "${1:-}" ;;
+    install)        cmd_install "${1:-}" ;;
+    install-bashrc) cmd_install_bashrc "${1:-}" ;;
+    install-skill)  cmd_install_skill "${1:-}" ;;
+    test)           cmd_test "${1:-}" ;;
+    add)            cmd_add "${1:-}" ;;
     help|-h|--help) usage ;;
     *)
       echo "unknown command: ${sub:-<none>}" >&2
