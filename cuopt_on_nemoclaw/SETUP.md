@@ -48,7 +48,7 @@ it can be any existing sandbox.
 - **apply-policy** — Merges cuOpt network rules into a running sandbox's policy
 - **install** — Creates a Python venv (`/sandbox/.openclaw-data/cuopt`), installs `cuopt_sh_client`, `cuopt-cu12`, and `grpcio`, and stamps an auto-activation block into `/sandbox/.bashrc`
 - **install-bashrc** — Re-stamps the `/sandbox/.bashrc` auto-activation block without reinstalling the venv (use after changing `CUOPT_HOST`, `CUOPT_PORT`, or `CUOPT_VENV`)
-- **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox
+- **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox, then vendors the upstream cuOpt skills (LP/MILP, routing, QP, server, formulation) from `github.com/NVIDIA/cuopt/tree/main/skills` so the agent can read them without outbound HTTPS. Pin the upstream ref via `CUOPT_SKILLS_REF` (default `main`); narrow what gets installed via `CUOPT_SKILLS_SKIP` (comma-separated globs, default `*installation*,*developer*,*-api-c`). Finally, the step writes a fresh `skills.entries.cuopt-sandbox.config.lastInstallAt` timestamp into `~/.openclaw/openclaw.json` so the gateway's config-reload watcher invalidates the cached `<available_skills>` snapshot — without this, skills uploaded after the agent's first run never appear in the prompt (see [How `<available_skills>` is cached](#how-available_skills-is-cached) below).
 - **test** — Smoke tests PyPI access and cuOpt server connectivity from inside the sandbox
 
 ## Getting cuOpt data into the sandbox
@@ -116,8 +116,8 @@ Each subdirectory containing a `SKILL.md` will be uploaded. Then re-run:
 | What | Path |
 |------|------|
 | Setup script | `cuopt_on_nemoclaw/nemoclaw_cuopt_setup.sh` |
-| gRPC probe | `cuopt_on_nemoclaw/probe_grpc.py` (uploaded to `/sandbox/.openclaw-data/probe_grpc.py`) |
-| Skill source files | `cuopt_on_nemoclaw/openclaw-skills/cuopt/SKILL.md` |
+| Endpoint probe | `cuopt_on_nemoclaw/probe_cuopt.py` (uploaded to `/sandbox/probe_cuopt.py`; reports both REST and gRPC reachability in one call) |
+| Skill source files | `cuopt_on_nemoclaw/openclaw-skills/cuopt-sandbox/SKILL.md` |
 | cuOpt venv in sandbox | `/sandbox/.openclaw-data/cuopt/` |
 
 ## Starting the cuOpt server
@@ -170,7 +170,7 @@ docker run -d --name cuopt-grpc --gpus all --restart unless-stopped \
 Verify (from the host or the sandbox):
 
 ```bash
-python3 probe_grpc.py
+python3 probe_cuopt.py
 ```
 
 ### Running both at once
@@ -201,7 +201,7 @@ docker pull "$CUOPT_IMAGE"   # then re-run the start commands
 
 - Verify the cuOpt server is running:
   - REST: `curl http://localhost:5000/cuopt/health`
-  - gRPC: `python3 probe_grpc.py` (or from inside the sandbox: `python3 /sandbox/.openclaw-data/probe_grpc.py`)
+  - Both at once (host or sandbox): `python3 probe_cuopt.py` (or from inside the sandbox: `python3 /sandbox/probe_cuopt.py`)
 - Check the firewall: `sudo ufw status` — ports 5000 and 5001 must be open on Docker bridges
 - Re-run `./nemoclaw_cuopt_setup.sh apply-policy cuopt` to repair the network policy
 
@@ -209,6 +209,59 @@ docker pull "$CUOPT_IMAGE"   # then re-run the start commands
 
 > **Warning:** The steps below modify sandbox internals and can break your setup.
 > Use at your own risk.
+
+### How `<available_skills>` is cached
+
+OpenClaw assembles the `<available_skills>` block in the agent's system prompt
+from a per-session snapshot stored at:
+
+```
+~/.openclaw/agents/<agentId>/sessions/sessions.json
+```
+
+The snapshot is built on the agent's *first* run for a session and reused on
+every subsequent run. Skills written to disk *after* that first run will not
+appear in the prompt until the snapshot is invalidated, even though
+`openclaw skills list` (which reads disk directly) sees them.
+
+Invalidation hooks (in OpenClaw source — `gateway/config-reload.ts`,
+`agents/skills/refresh.ts`):
+
+- The gateway watches `~/.openclaw/openclaw.json`. When any path under
+  `skills.*` changes, it bumps the snapshot version and the next agent run
+  rebuilds the prompt from disk.
+- A filesystem watcher (chokidar) optionally watches `~/.openclaw/skills/`
+  itself when `skills.load.watch` is enabled. In some sandbox configurations
+  the watcher fires inconsistently, so the setup script does not rely on it.
+
+`install-skill` triggers the config-reload hook by writing two
+schema-defined fields into the sandbox's `~/.openclaw/openclaw.json`:
+
+- `skills.load.watch: true` — enable the (best-effort) filesystem watcher.
+- `skills.entries.cuopt-sandbox.config.lastInstallAt: <ISO timestamp>` —
+  guarantees a non-empty config diff on every run.
+
+If you upload skill files manually (without re-running `install-skill`), you
+can force the same invalidation by hand:
+
+```bash
+openshell sandbox exec --name cuopt --no-tty -- python3 -c '
+import json, time
+p = "/sandbox/.openclaw/openclaw.json"
+cfg = json.load(open(p))
+cfg.setdefault("skills", {}).setdefault("load", {})["watch"] = True
+cfg["skills"].setdefault("entries", {}) \
+   .setdefault("cuopt-sandbox", {}) \
+   .setdefault("config", {})["lastInstallAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+json.dump(cfg, open(p, "w"), indent=2)'
+```
+
+To verify which skills the agent currently sees in `<available_skills>`,
+ask it (the `openclaw skills list` CLI bypasses the snapshot):
+
+```bash
+openclaw agent --agent main -m "Use the read tool to read /sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md ONLY if it is in your available_skills list. If it is not, output: NOT_IN_AVAILABLE_SKILLS"
+```
 
 ### Agent outputs raw XML tool calls instead of executing them
 

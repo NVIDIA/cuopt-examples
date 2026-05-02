@@ -49,6 +49,21 @@
 #   CUOPT_HOST_IP   IP that host.openshell.internal resolves to
 #                   (default: auto-detected from running sandbox, or
 #                    172.17.0.1). Needed for OpenShell allowed_ips.
+#   CUOPT_SKILLS_REPO  GitHub repo to fetch upstream cuOpt skills from
+#                      (default: NVIDIA/cuopt).
+#   CUOPT_SKILLS_REF   Branch / tag / commit SHA to fetch from CUOPT_SKILLS_REPO
+#                      (default: main).
+#   CUOPT_SKILLS_SKIP  Comma-separated glob patterns matching upstream skill
+#                      names to NOT install (default:
+#                      *installation*,*developer*,*-api-c).
+#                      *installation* — host-side install flows; cuOpt is
+#                          already installed in the sandbox.
+#                      *developer*    — for contributing to the cuOpt
+#                          codebase; agents use cuOpt, they don't build it.
+#                      *-api-c        — libcuopt is present so the C API
+#                          works, but its CSR-matrix inputs are awkward to
+#                          build from an agent; the Python API is strictly
+#                          easier. Override this to ship them anyway.
 #
 # Examples:
 #   ./nemoclaw_cuopt_setup.sh add cuopt        # Add cuOpt to sandbox "cuopt"
@@ -83,6 +98,15 @@ CUOPT_PORT="${CUOPT_PORT:-5000}"
 CUOPT_GRPC_PORT="${CUOPT_GRPC_PORT:-5001}"
 CUOPT_PYTHON_BIN="${CUOPT_PYTHON_BIN:-}"
 CUOPT_HOST_IP="${CUOPT_HOST_IP:-}"
+CUOPT_SKILLS_REPO="${CUOPT_SKILLS_REPO:-NVIDIA/cuopt}"
+# Skill set last verified end-to-end with this script. Keep this pinned to
+# a tag or commit SHA so users get a reproducible vendoring even when
+# upstream main moves. Update deliberately, alongside the version banner
+# constants above, when a newer cuOpt skill release is verified. Override
+# at runtime with CUOPT_SKILLS_REF=<ref>.
+TESTED_CUOPT_SKILLS_REF="main"
+CUOPT_SKILLS_REF="${CUOPT_SKILLS_REF:-${TESTED_CUOPT_SKILLS_REF}}"
+CUOPT_SKILLS_SKIP="${CUOPT_SKILLS_SKIP:-*installation*,*developer*,*-api-c}"
 FORCE=false
 
 # ── Tested NemoClaw / OpenShell versions ──────────────────────────
@@ -258,6 +282,15 @@ detect_host_ip() {
   echo "172.17.0.1"
 }
 
+# ── Docker bridge discovery (used by firewall check + hint) ──────
+# List active bridge interfaces that look like Docker (docker0) or a
+# user-defined Docker network (br-<hex>). Empty output is fine.
+discover_docker_bridges() {
+  ip -o link show type bridge 2>/dev/null \
+    | awk -F': ' '{print $2}' \
+    | grep -E '^(docker|br-)' || true
+}
+
 # ── Firewall check ────────────────────────────────────────────────
 # Docker containers need to reach the host on CUOPT_PORT and/or
 # CUOPT_GRPC_PORT. If UFW drops that traffic, sandbox connections hang.
@@ -265,10 +298,23 @@ detect_host_ip() {
 # nemoclaw destroy / onboard recreates the Docker network).
 # Usage: check_firewall [port ...]
 #   If ports are given, only check those. Otherwise check both.
+# Returns: 0 if no warning needed (or warning printed), 2 if UFW status
+#   could not be determined non-interactively (caller may want to print
+#   a fallback hint via print_ufw_unknown_hint).
 check_firewall() {
   if ! command -v ufw &>/dev/null; then return 0; fi
+  # Use sudo -n only. Falling back to plain `ufw status` is pointless: it
+  # also requires root and prints "ERROR: You need to be root..." to stderr,
+  # which we'd swallow and treat as "all clear" — exactly the silent failure
+  # this script saw on hosts where sudo requires a password (#TBD).
   local status
-  status="$(sudo -n ufw status 2>/dev/null || ufw status 2>/dev/null || true)"
+  status="$(sudo -n ufw status 2>/dev/null)"
+  if [[ -z "$status" ]]; then
+    # Could not query UFW (sudo needs password, ufw refused, etc.). Tell
+    # the caller so it can print a more useful hint when paired with
+    # actual probe results.
+    return 2
+  fi
   if ! echo "$status" | grep -q "^Status: active"; then return 0; fi
 
   # Ports to check for missing rules (only services that are running)
@@ -283,9 +329,7 @@ check_firewall() {
   local -a current_bridges=()
   while IFS= read -r iface; do
     [[ -n "$iface" ]] && current_bridges+=("$iface")
-  done < <(ip -o link show type bridge 2>/dev/null \
-           | awk -F': ' '{print $2}' \
-           | grep -E '^(docker|br-)' || true)
+  done < <(discover_docker_bridges)
   if [[ ${#current_bridges[@]} -eq 0 ]]; then return 0; fi
 
   # Bridge interfaces referenced in UFW rules
@@ -377,6 +421,57 @@ check_firewall() {
 
   echo ""
   echo "  Then retry: $0 test"
+  echo ""
+  echo "══════════════════════════════════════════════════════════════════════"
+  echo ""
+}
+
+# ── Firewall hint (when UFW status can't be queried) ─────────────
+# Called from cmd_test when check_firewall returned 2 (couldn't query
+# ufw non-interactively) AND the in-sandbox probe reported one or more
+# host-listening ports as unreachable. Prints the exact `sudo ufw allow`
+# commands the user would need *if* UFW turns out to be active and
+# blocking. Safe to call when UFW is actually inactive — the hint is
+# explicitly conditional.
+# Usage: print_ufw_unknown_hint <port> [port ...]
+print_ufw_unknown_hint() {
+  local ports=("$@")
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    ports=("${CUOPT_PORT}" "${CUOPT_GRPC_PORT}")
+  fi
+
+  local -a bridges=()
+  while IFS= read -r iface; do
+    [[ -n "$iface" ]] && bridges+=("$iface")
+  done < <(discover_docker_bridges)
+
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════════╗"
+  echo "║  ⚠  FIREWALL HINT (could not query UFW)                       ║"
+  echo "╚══════════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  Could not query UFW non-interactively (sudo password required)."
+  echo "  Host services are listening but the sandbox could not reach them,"
+  echo "  which often means UFW is dropping traffic from the Docker bridge."
+  echo ""
+  echo "  First, confirm UFW is the cause:"
+  echo ""
+  echo "    sudo ufw status"
+  echo ""
+  if [[ ${#bridges[@]} -gt 0 ]]; then
+    echo "  If 'Status: active' and no rules cover these ports on the"
+    echo "  Docker bridge(s) below, add them:"
+    echo ""
+    for iface in "${bridges[@]}"; do
+      for port in "${ports[@]}"; do
+        echo "    sudo ufw allow in on ${iface} to any port ${port}"
+      done
+    done
+    echo ""
+    echo "  Then retry: $0 test"
+  else
+    echo "  (No Docker bridges detected — issue is likely elsewhere.)"
+  fi
   echo ""
   echo "══════════════════════════════════════════════════════════════════════"
   echo ""
@@ -688,48 +783,128 @@ cmd_test() {
   echo "Host services: REST=$(if $has_rest; then echo UP; else echo DOWN; fi)  gRPC=$(if $has_grpc; then echo UP; else echo DOWN; fi)"
   echo "Smoke-testing sandbox: $sandbox (venv: $venv) ..."
 
+  # probe_cuopt.py reports REST and gRPC reachability in one call. We pass
+  # CUOPT_SERVER_HOST/PORT (REST) and CUOPT_REMOTE_HOST/PORT (gRPC) so the
+  # probe checks the same endpoints we just verified are listening on the
+  # host. The probe's exit code is non-zero only when *both* are unreachable
+  # from inside the sandbox — `|| true` prevents that from breaking the
+  # heredoc's overall exit status.
   local sandbox_cmds="
 source ${venv}/bin/activate
 echo '--- pip check ---'
 python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__version__)\"
-"
 
-  if [[ "$has_grpc" == true ]]; then
-    sandbox_cmds+="
 echo ''
-echo '--- gRPC server (${grpc_host}:${CUOPT_GRPC_PORT}) ---'
-CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} python3 /sandbox/.openclaw-data/probe_grpc.py || true
-"
-  fi
+echo '--- cuOpt endpoint probe (REST=${cuopt_url}, gRPC=${grpc_host}:${CUOPT_GRPC_PORT}) ---'
+CUOPT_SERVER_HOST=${grpc_host} CUOPT_SERVER_PORT=${CUOPT_PORT} \\
+CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
+python3 /sandbox/probe_cuopt.py || true
 
-  if [[ "$has_rest" == true ]]; then
-    sandbox_cmds+="
-echo ''
-echo '--- REST server (${cuopt_url}) ---'
-python3 -c \"
-import requests
-try:
-    r = requests.get('${cuopt_url}/cuopt/health', timeout=5)
-    print(f'REST: status {r.status_code}')
-    print(f'REST: {r.text[:300]}')
-except Exception as e:
-    print(f'REST: NOT reachable ({e})')
-\"
-"
-  fi
-
-  sandbox_cmds+="
 echo ''
 exit
 "
-  echo "$sandbox_cmds" | openshell sandbox connect "$sandbox"
+  # Capture the sandbox output so we can both display it AND parse it for
+  # reachability ('unreachable' literal from probe_cuopt.py). `tee` keeps
+  # the live UX intact; mktemp avoids clobbering anything else in /tmp.
+  local probe_log
+  probe_log="$(mktemp /tmp/cuopt-probe-XXXXXX.log)"
+  echo "$sandbox_cmds" | openshell sandbox connect "$sandbox" 2>&1 \
+    | tee "$probe_log"
   echo "Test complete."
+
+  # Detect probe failures per service. Only treat as a failure if the
+  # service was actually listening on the host — there's no point hinting
+  # about a port we never expected to be reachable.
+  local rest_unreachable=false grpc_unreachable=false
+  if [[ "$has_rest" == true ]] \
+     && grep -qE '^rest:[[:space:]]+unreachable' "$probe_log"; then
+    rest_unreachable=true
+  fi
+  if [[ "$has_grpc" == true ]] \
+     && grep -qE '^grpc:[[:space:]]+unreachable' "$probe_log"; then
+    grpc_unreachable=true
+  fi
+  rm -f "$probe_log"
 
   # Only warn about firewall for ports that are actually listening
   local check_ports=()
   [[ "$has_rest" == true ]] && check_ports+=("${CUOPT_PORT}")
   [[ "$has_grpc" == true ]] && check_ports+=("${CUOPT_GRPC_PORT}")
-  check_firewall "${check_ports[@]}"
+  local check_rc=0
+  check_firewall "${check_ports[@]}" || check_rc=$?
+
+  # check_firewall returns 2 when it could not query UFW non-interactively
+  # (sudo password required). Pre-fix, this silently degraded to "all
+  # clear" and users hit a real UFW block with no hint. Now: if the probe
+  # also showed any host-listening service as unreachable, print the
+  # exact `sudo ufw allow ...` commands they would need *if* UFW turns
+  # out to be active. If the probe succeeded, just leave a one-liner so
+  # the user knows the check was skipped (no false sense of completeness).
+  if [[ $check_rc -eq 2 ]]; then
+    local -a unreachable_ports=()
+    [[ "$rest_unreachable" == true ]] && unreachable_ports+=("${CUOPT_PORT}")
+    [[ "$grpc_unreachable" == true ]] && unreachable_ports+=("${CUOPT_GRPC_PORT}")
+    if [[ ${#unreachable_ports[@]} -gt 0 ]]; then
+      print_ufw_unknown_hint "${unreachable_ports[@]}"
+    else
+      echo ""
+      echo "Note: could not query UFW non-interactively (sudo password required)."
+      echo "      Probe succeeded so this is informational; to audit:"
+      echo "        sudo ufw status"
+      echo ""
+    fi
+  fi
+}
+
+# ── Upstream skills fetch ─────────────────────────────────────────
+# Download the cuOpt repo's `skills/` tree as a tarball and extract it into
+# $1 so each subdirectory under skills/ becomes a top-level entry. The agent
+# can't reach github.com from inside the sandbox, so we vendor the skills at
+# install time. Returns 0 on success, 1 on any fetch/extract failure (caller
+# should fall through to local-only installation).
+#
+# Notes on resilience to upstream layout changes:
+#   - We do NOT swallow tar's stderr. If `--wildcards "*/skills/*"` matches
+#     nothing (e.g. upstream moved skills out of skills/), tar exits 0 but
+#     prints "Not found in archive", which then surfaces to the operator.
+#   - The caller (cmd_install_skill) additionally counts SKILL.md entries
+#     post-extract and warns explicitly when zero are found, so a quietly
+#     empty extract never silently degrades to "local skills only".
+fetch_upstream_skills() {
+  local dest="$1"
+  local repo="${CUOPT_SKILLS_REPO}"
+  local ref="${CUOPT_SKILLS_REF}"
+  local url="https://github.com/${repo}/archive/${ref}.tar.gz"
+
+  if [[ "$ref" != "$TESTED_CUOPT_SKILLS_REF" ]]; then
+    echo "  Note: CUOPT_SKILLS_REF=${ref} differs from tested ref ${TESTED_CUOPT_SKILLS_REF}" >&2
+  fi
+  echo "  Fetching upstream skills from ${repo}@${ref} ..." >&2
+  if ! curl -fsSL "$url" \
+       | tar -xz -C "$dest" --strip-components=2 --wildcards "*/skills/*"; then
+    echo "  warning: failed to fetch upstream skills from $url" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Returns 0 if $1 matches any comma-separated glob in $CUOPT_SKILLS_SKIP.
+# Glob is bash extglob-free; '*' and '?' work as expected (e.g. *installation*).
+skill_is_skipped() {
+  local name="$1"
+  local raw="$CUOPT_SKILLS_SKIP"
+  [[ -z "$raw" ]] && return 1
+  local IFS=','
+  local pat
+  for pat in $raw; do
+    pat="${pat# }"; pat="${pat% }"
+    [[ -z "$pat" ]] && continue
+    # shellcheck disable=SC2053  # intentional unquoted RHS for glob match
+    if [[ "$name" == $pat ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # ── install-skill ─────────────────────────────────────────────────
@@ -742,17 +917,101 @@ cmd_install_skill() {
     exit 1
   fi
 
+  # Track names already uploaded so upstream skills can't override local ones.
+  local -a uploaded_names=()
+  local name
+
   echo "Installing skills into sandbox '$sandbox' ..."
   for skill in "$skills_dir"/*/; do
-    local name
     name="$(basename "$skill")"
     if [[ -f "$skill/SKILL.md" ]]; then
-      echo "  Uploading skill: $name"
-      if ! openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw-data/skills/$name" 2>&1; then
+      echo "  Uploading local skill: $name"
+      if openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/$name" 2>&1; then
+        uploaded_names+=("$name")
+      else
         echo "  warning: upload failed for skill '$name'" >&2
       fi
     fi
   done
+
+  # Vendor upstream cuOpt skills so the agent doesn't need github.com egress.
+  # Local skills (above) take precedence on name collisions; names matched by
+  # CUOPT_SKILLS_SKIP are filtered out (host-side install / codebase developer
+  # skills don't apply in a pre-installed sandbox).
+  local upstream_dir
+  upstream_dir="$(mktemp -d /tmp/cuopt-skills-XXXXXX)"
+  # Best-effort cleanup; don't trap globally so we don't stomp on other handlers.
+  if fetch_upstream_skills "$upstream_dir"; then
+    # Collect every upstream skill directory name (those with a SKILL.md)
+    # BEFORE we apply the SKIP filter. We use this list for two checks:
+    #   1. Detect a zero-skill extract (upstream may have moved skills/).
+    #   2. Verify each CUOPT_SKILLS_SKIP pattern matched at least one
+    #      pre-filter name (a pattern that matches nothing is almost
+    #      always a stale glob from before an upstream rename).
+    local -a upstream_names_all=()
+    local skill upstream_name was_uploaded
+    for skill in "$upstream_dir"/*/; do
+      [[ -d "$skill" ]] || continue
+      [[ -f "$skill/SKILL.md" ]] || continue
+      upstream_names_all+=("$(basename "$skill")")
+    done
+
+    if [[ ${#upstream_names_all[@]} -eq 0 ]]; then
+      echo "  warning: upstream tarball produced 0 skill directories with SKILL.md" >&2
+      echo "           upstream layout may have changed (e.g. skills/ moved)." >&2
+      echo "           Repo:${CUOPT_SKILLS_REPO}  Ref:${CUOPT_SKILLS_REF}" >&2
+      echo "           Continuing with local skills only." >&2
+    fi
+
+    for upstream_name in "${upstream_names_all[@]+"${upstream_names_all[@]}"}"; do
+      skill="$upstream_dir/$upstream_name/"
+
+      was_uploaded=false
+      for n in "${uploaded_names[@]+"${uploaded_names[@]}"}"; do
+        [[ "$n" == "$upstream_name" ]] && { was_uploaded=true; break; }
+      done
+      if $was_uploaded; then
+        echo "  Skipping upstream '$upstream_name' (overridden by local skill)"
+        continue
+      fi
+      if skill_is_skipped "$upstream_name"; then
+        echo "  Skipping upstream '$upstream_name' (matches CUOPT_SKILLS_SKIP)"
+        continue
+      fi
+
+      echo "  Uploading upstream skill: $upstream_name"
+      if ! openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/$upstream_name" 2>&1; then
+        echo "  warning: upload failed for upstream skill '$upstream_name'" >&2
+      fi
+    done
+
+    # Validate SKIP patterns. A glob in CUOPT_SKILLS_SKIP that matches no
+    # upstream name almost always means upstream renamed/removed the
+    # category the pattern targeted (e.g. *installation* before/after a
+    # skill consolidation). We surface this so the operator can update
+    # the SKIP list rather than silently shipping skills they intended
+    # to filter out.
+    if [[ -n "$CUOPT_SKILLS_SKIP" && ${#upstream_names_all[@]} -gt 0 ]]; then
+      local skip_save_ifs="$IFS"
+      IFS=','
+      local pat matched n
+      for pat in $CUOPT_SKILLS_SKIP; do
+        pat="${pat# }"; pat="${pat% }"
+        [[ -z "$pat" ]] && continue
+        matched=false
+        for n in "${upstream_names_all[@]}"; do
+          # shellcheck disable=SC2053  # intentional unquoted RHS for glob match
+          if [[ "$n" == $pat ]]; then matched=true; break; fi
+        done
+        if ! $matched; then
+          echo "  warning: CUOPT_SKILLS_SKIP pattern '${pat}' matched 0 upstream skills" >&2
+          echo "           (upstream may have renamed/removed; review CUOPT_SKILLS_SKIP)" >&2
+        fi
+      done
+      IFS="$skip_save_ifs"
+    fi
+  fi
+  rm -rf "$upstream_dir"
 
   # The OpenClaw agent compacts paths under $HOME to ~/… in the system prompt.
   # When the agent later tries to read that path, ~ may expand to a different
@@ -773,26 +1032,31 @@ cmd_install_skill() {
   guardrail_content="$(cat <<'GUARDRAIL'
 ---
 name: cuopt-setup
-description: "Read this FIRST when working with cuOpt. If you cannot read the cuopt skill at ~/.openclaw/skills/cuopt/SKILL.md, this tells you where the real file lives."
+description: "Read this FIRST when working with cuOpt. If you cannot read the cuopt-sandbox skill at ~/.openclaw/skills/cuopt-sandbox/SKILL.md, this tells you where the real file lives."
 ---
 
-# cuOpt skill — path resolution
+# cuOpt sandbox skill — path resolution
 
-The full cuOpt skill is installed at an absolute path that always works:
+The cuopt-sandbox skill (sandbox-specific setup, networking, venv) is
+installed at an absolute path that always works:
 
-    /sandbox/.openclaw-data/skills/cuopt/SKILL.md
+    /sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md
 
-Read that file now for complete cuOpt usage instructions.
+Read that file FIRST for sandbox-specific cuOpt setup, then consult the
+per-task sibling skills it points at (cuopt-user-rules,
+cuopt-lp-milp-api-python, cuopt-routing-api-python, lp-milp-formulation,
+etc.) which live in the same `/sandbox/.openclaw/skills/` directory.
 
 ## Why this guardrail exists
 
 OpenClaw compacts skill paths to `~/…` in the system prompt. When you try
-to read `~/.openclaw/skills/cuopt/SKILL.md`, the `~` may expand to `/root/`
-or another directory that is not readable. If that happens:
+to read `~/.openclaw/skills/cuopt-sandbox/SKILL.md`, the `~` may expand to
+`/root/` or another directory that is not readable. If that happens:
 
 1. Do NOT give up on using cuOpt.
 2. Read the skill from the absolute path above.
-3. Also check `/sandbox/.openclaw/skills/cuopt/SKILL.md` (symlink to same file).
+3. Also check `/sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md` (symlink
+   to the same file).
 GUARDRAIL
 )"
 
@@ -806,26 +1070,102 @@ GUARDRAIL
     2>/dev/null \
   || echo "  warning: could not install cuopt-setup guardrail (non-fatal)" >&2
 
+  # ── invalidate cached <available_skills> snapshot ───────────────────
+  # OpenClaw caches the skills prompt in a per-session snapshot stored in
+  # ~/.openclaw/agents/<id>/sessions/sessions.json. The snapshot is built
+  # on the agent's first run and reused thereafter, so skills uploaded
+  # *after* that first run never appear in <available_skills>.
+  #
+  # The supported invalidation hook is the gateway's openclaw.json
+  # watcher (openclaw/src/gateway/config-reload.ts): when any path
+  # under `skills.*` changes, it bumps the snapshot version and the
+  # next agent run rebuilds the prompt from disk.
+  #
+  # We use only schema-defined keys (SkillsLoadConfig.watch /
+  # watchDebounceMs and SkillConfig.config) so the resulting config
+  # remains valid:
+  #   • skills.load.watch=true                            — best-effort
+  #     filesystem-watch invalidation for future drops; chokidar inside
+  #     the sandbox is not always reliable so we don't rely on it.
+  #   • skills.entries.cuopt-sandbox.config.lastInstallAt — a fresh ISO
+  #     timestamp on every install guarantees a non-empty config diff
+  #     even if `watch` is already true.
+  echo "  Invalidating cached skills snapshot via openclaw.json update ..."
+  local invalidator
+  invalidator='
+import json, os, sys, time, tempfile
+cfg_path = "/sandbox/.openclaw/openclaw.json"
+try:
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+except FileNotFoundError:
+    cfg = {}
+except Exception as e:
+    print("error: cannot read " + cfg_path + ": " + str(e), file=sys.stderr)
+    sys.exit(1)
+skills = cfg.setdefault("skills", {})
+load = skills.setdefault("load", {})
+load["watch"] = True
+load.setdefault("watchDebounceMs", 250)
+entries = skills.setdefault("entries", {})
+sentinel = entries.setdefault("cuopt-sandbox", {})
+sentinel_cfg = sentinel.setdefault("config", {})
+sentinel_cfg["lastInstallAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+fd, tmp = tempfile.mkstemp(prefix=".openclaw.", dir=os.path.dirname(cfg_path))
+try:
+    with os.fdopen(fd, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, cfg_path)
+except Exception:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+    raise
+print("    skills.entries.cuopt-sandbox.config.lastInstallAt=" + sentinel_cfg["lastInstallAt"])
+'
+  local invalidator_b64
+  invalidator_b64="$(printf '%s' "$invalidator" | base64 -w 0)"
+  if ! openshell sandbox exec --name "$sandbox" --no-tty -- \
+        bash -c "echo '${invalidator_b64}' | base64 -d | python3" 2>&1; then
+    echo "  warning: failed to bump openclaw.json — agent may continue using a stale" >&2
+    echo "           skills snapshot until the next config change or a fresh onboard" >&2
+  fi
+
   echo "Skills installed."
 
-  # Upload gRPC probe script. Targets /sandbox/.openclaw-data/ because the
-  # default NemoClaw filesystem policy marks /sandbox as read-only; the old
-  # target /sandbox/probe_grpc.py fails with Permission denied.
+  # Upload the combined REST/gRPC probe directly to /sandbox/. The probe is
+  # not a skill (it's run by `cmd_test`), so it doesn't need to live under
+  # the skills tree. Direct upload is preferred when policy allows it.
   #
-  # NOTE: `openshell sandbox upload` treats DEST as a DIRECTORY and lands
-  # the file at DEST/<basename(SRC)>. Passing a file path as DEST would
-  # create a directory with that name containing the real file inside, so
-  # we pass the parent directory and let the basename come from the source.
-  local probe="$SCRIPT_DIR/probe_grpc.py"
-  local probe_dir="/sandbox/.openclaw-data"
-  local probe_dest="${probe_dir}/$(basename "$probe")"
+  # IMPORTANT: `openshell sandbox upload` treats DEST as a *directory* and
+  # lands the file at DEST/<basename(SRC)>. Passing a file path (e.g.
+  # `/sandbox/probe_cuopt.py`) creates a directory with that name containing
+  # the real file inside — Python then errors with "can't find '__main__'
+  # module" when invoked against the directory. So we pass `/sandbox/` and
+  # let the basename come from SRC.
+  #
+  # We also defensively `rm -rf` any prior file or directory at the
+  # destination before uploading, and fall back to an inline base64 copy
+  # via `openshell sandbox exec` if the upload fails outright.
+  local probe="$SCRIPT_DIR/probe_cuopt.py"
   if [[ -f "$probe" ]]; then
-    echo "  Uploading probe_grpc.py -> ${probe_dest}"
-    if ! openshell sandbox upload "$sandbox" "$probe" "${probe_dir}/" 2>&1; then
-      echo "  warning: failed to upload probe_grpc.py into sandbox" >&2
+    openshell sandbox exec --name "$sandbox" --no-tty -- \
+      rm -rf /sandbox/probe_cuopt.py 2>/dev/null || true
+
+    echo "  Uploading probe_cuopt.py -> /sandbox/probe_cuopt.py"
+    if ! openshell sandbox upload "$sandbox" "$probe" "/sandbox/" 2>&1; then
+      echo "  Upload failed — falling back to inline base64 copy via sandbox exec"
+      local probe_b64
+      probe_b64="$(base64 -w 0 < "$probe")"
+      if openshell sandbox exec --name "$sandbox" --no-tty -- \
+           bash -c "echo '${probe_b64}' | base64 -d > /sandbox/probe_cuopt.py" 2>/dev/null; then
+        echo "  probe_cuopt.py written via fallback"
+      else
+        echo "  warning: failed to write probe_cuopt.py into sandbox" >&2
+      fi
     fi
   else
-    echo "  warning: probe_grpc.py not found at $probe — skipping" >&2
+    echo "  warning: probe_cuopt.py not found at $probe — skipping" >&2
   fi
 }
 
