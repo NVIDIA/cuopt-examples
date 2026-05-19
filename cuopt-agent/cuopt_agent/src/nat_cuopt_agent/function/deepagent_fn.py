@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
@@ -38,13 +40,239 @@ from nat.data_models.api_server import (
 from nat.data_models.component_ref import FunctionRef, LLMRef
 from nat.data_models.function import FunctionBaseConfig
 from nat.utils.type_converter import GlobalTypeConverter
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 logger = logging.getLogger(__name__)
+
+# Built via concat so file tooling does not strip XML-like tag literals.
+_THINKING_OPEN_TAG = "<" + "redacted_thinking" + ">"
+_THINKING_CLOSE_TAG = "</" + "redacted_thinking" + ">"
+_StreamKind = Literal["content", "reasoning"]
+
+_DEFAULT_STRIP_REASONING_PATTERN = (
+    rf"{_THINKING_OPEN_TAG}.*?{_THINKING_CLOSE_TAG}\s*|{_THINKING_OPEN_TAG}.*"
+)
 
 # Streaming tuning (not NAT workflow YAML keys — adjust here, not in config-deepagent.yml).
 _STREAM_MAX_SEGMENT_CHARS = 48
 _STREAM_PROGRESS_UPDATES = True
+
+
+def _split_partial_marker_suffix(text: str, marker: str) -> tuple[str, str]:
+    """Split *text* so a trailing prefix of *marker* is held back (incomplete tag)."""
+    if not text or not marker:
+        return text, ""
+    for k in range(min(len(text), len(marker) - 1), 0, -1):
+        if marker.startswith(text[-k:]):
+            return text[:-k], text[-k:]
+    return text, ""
+
+
+class _ThinkingTagParser:
+    """Split an LLM token stream into visible content vs minimax thinking blocks."""
+
+    def __init__(
+        self,
+        open_tag: str = _THINKING_OPEN_TAG,
+        close_tag: str = _THINKING_CLOSE_TAG,
+    ) -> None:
+        self._open_tag = open_tag
+        self._close_tag = close_tag
+        self._in_thinking = False
+        self._carry = ""
+
+    def feed(self, text: str) -> list[tuple[_StreamKind, str]]:
+        if not text:
+            return []
+        stream = self._carry + text
+        self._carry = ""
+        out: list[tuple[_StreamKind, str]] = []
+        i = 0
+        while i < len(stream):
+            if not self._in_thinking:
+                open_at = stream.find(self._open_tag, i)
+                if open_at == -1:
+                    tail = stream[i:]
+                    emit, self._carry = _split_partial_marker_suffix(tail, self._open_tag)
+                    if emit:
+                        out.append(("content", emit))
+                    break
+                if open_at > i:
+                    out.append(("content", stream[i:open_at]))
+                i = open_at + len(self._open_tag)
+                self._in_thinking = True
+            else:
+                close_at = stream.find(self._close_tag, i)
+                if close_at == -1:
+                    tail = stream[i:]
+                    emit, self._carry = _split_partial_marker_suffix(tail, self._close_tag)
+                    if emit:
+                        out.append(("reasoning", emit))
+                    break
+                if close_at > i:
+                    out.append(("reasoning", stream[i:close_at]))
+                i = close_at + len(self._close_tag)
+                self._in_thinking = False
+        return out
+
+    def flush(self) -> list[tuple[_StreamKind, str]]:
+        out: list[tuple[_StreamKind, str]] = []
+        if self._carry:
+            kind: _StreamKind = "reasoning" if self._in_thinking else "content"
+            out.append((kind, self._carry))
+            self._carry = ""
+        self._in_thinking = False
+        return out
+
+
+class _SegmentBuffer:
+    """Rolling buffer that emits fixed-size segments as data arrives."""
+
+    def __init__(self, max_chars: int) -> None:
+        self._max_chars = max(1, max_chars)
+        self._pending = ""
+
+    def push(self, text: str) -> list[str]:
+        if not text:
+            return []
+        self._pending += text
+        return self._take(full_only=True)
+
+    def finish(self) -> list[str]:
+        segments = self._take(full_only=False)
+        if self._pending:
+            segments.append(self._pending)
+            self._pending = ""
+        return segments
+
+    def _take(self, *, full_only: bool) -> list[str]:
+        segments: list[str] = []
+        while self._pending:
+            if full_only and len(self._pending) <= self._max_chars:
+                break
+            end = min(self._max_chars, len(self._pending))
+            if end < len(self._pending) and self._pending[end - 1] not in " \n\t":
+                boundary = self._pending.rfind(" ", 0, end)
+                if boundary > 0:
+                    end = boundary + 1
+            segment = self._pending[:end]
+            if not segment:
+                segment = self._pending[:1]
+                end = 1
+            segments.append(segment)
+            self._pending = self._pending[end:]
+        return segments
+
+
+class _StreamSegmentEmitter:
+    """Parse thinking tags and emit segmented content / reasoning text pieces."""
+
+    def __init__(self, max_chars: int) -> None:
+        self._parser = _ThinkingTagParser()
+        self._content_buf = _SegmentBuffer(max_chars)
+        self._reasoning_buf = _SegmentBuffer(max_chars)
+
+    def feed(self, text: str) -> list[tuple[_StreamKind, str]]:
+        segments: list[tuple[_StreamKind, str]] = []
+        for kind, piece in self._parser.feed(text):
+            segments.extend(self._push_piece(kind, piece))
+        return segments
+
+    def finish(self) -> list[tuple[_StreamKind, str]]:
+        segments: list[tuple[_StreamKind, str]] = []
+        for kind, piece in self._parser.flush():
+            segments.extend(self._push_piece(kind, piece))
+        for segment in self._content_buf.finish():
+            segments.append(("content", segment))
+        for segment in self._reasoning_buf.finish():
+            segments.append(("reasoning", segment))
+        return segments
+
+    def _push_piece(self, kind: _StreamKind, piece: str) -> list[tuple[_StreamKind, str]]:
+        buf = self._reasoning_buf if kind == "reasoning" else self._content_buf
+        return [(kind, segment) for segment in buf.push(piece)]
+
+
+class _CatalogStreamChunk(ChatResponseChunk):
+    """``ChatResponseChunk`` that serializes ``delta.reasoning_content`` for API Catalog."""
+
+    _reasoning_delta: str | None = PrivateAttr(default=None)
+
+    def get_stream_data(self) -> str:
+        payload = json.loads(super().get_stream_data().removeprefix("data:").strip())
+        if self._reasoning_delta is not None:
+            choice = payload["choices"][0]
+            delta = dict(choice.get("delta") or {})
+            delta["reasoning_content"] = self._reasoning_delta
+            if not delta.get("content"):
+                delta.pop("content", None)
+            choice["delta"] = delta
+        return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n"
+
+
+def _catalog_stream_chunk(
+    *,
+    stream_id: str,
+    created: datetime.datetime,
+    model: str,
+    content: str | None = None,
+    reasoning_content: str | None = None,
+    role: str | None = None,
+    finish_reason: str | None = None,
+    usage: Usage | None = None,
+) -> ChatResponseChunk:
+    base = ChatResponseChunk.create_streaming_chunk(
+        content if content is not None else "",
+        id_=stream_id,
+        created=created,
+        model=model,
+        role=role,
+        finish_reason=finish_reason,
+        usage=usage,
+    )
+    if not reasoning_content:
+        return base
+    chunk = _CatalogStreamChunk.model_validate(base.model_dump())
+    chunk._reasoning_delta = reasoning_content
+    return chunk
+
+
+class _StreamDeltaWriter:
+    """Map segmented stream pieces to API Catalog ``ChatResponseChunk`` objects."""
+
+    def __init__(
+        self,
+        *,
+        stream_id: str,
+        created: datetime.datetime,
+        model: str,
+        max_chars: int,
+    ) -> None:
+        self._stream_id = stream_id
+        self._created = created
+        self._model = model
+        self._emitter = _StreamSegmentEmitter(max_chars)
+
+    def feed(self, text: str) -> list[ChatResponseChunk]:
+        return [self._to_chunk(kind, segment) for kind, segment in self._emitter.feed(text)]
+
+    def finish(self) -> list[ChatResponseChunk]:
+        return [self._to_chunk(kind, segment) for kind, segment in self._emitter.finish()]
+
+    def _to_chunk(self, kind: _StreamKind, segment: str) -> ChatResponseChunk:
+        if kind == "reasoning":
+            return _catalog_stream_chunk(
+                stream_id=self._stream_id,
+                created=self._created,
+                model=self._model,
+                reasoning_content=segment,
+            )
+        return _catalog_stream_chunk(
+            stream_id=self._stream_id,
+            created=self._created,
+            model=self._model,
+            content=segment,
+        )
 
 
 class DeepAgentConfig(FunctionBaseConfig, name="deepagent_fn"):
@@ -136,7 +364,7 @@ class DeepAgentConfig(FunctionBaseConfig, name="deepagent_fn"):
         description="Maximum delay cap in seconds between retries.",
     )
     strip_reasoning_pattern: str = Field(
-        default=r"<think>.*?</think>\s*|<think>.*",
+        default=_DEFAULT_STRIP_REASONING_PATTERN,
         description=(
             "Regex pattern (re.DOTALL) to strip from the final response. "
             "Matches are removed before returning to the caller. "
@@ -297,26 +525,6 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             return "".join(parts)
         return str(content)
 
-    def _iter_stream_segments(text: str, max_chars: int) -> list[str]:
-        if not text:
-            return []
-        if max_chars <= 0 or len(text) <= max_chars:
-            return [text]
-        segments: list[str] = []
-        start = 0
-        length = len(text)
-        while start < length:
-            end = min(start + max_chars, length)
-            if end < length and text[end - 1] not in " \n\t":
-                boundary = text.rfind(" ", start, end)
-                if boundary > start:
-                    end = boundary + 1
-            segment = text[start:end]
-            if segment:
-                segments.append(segment)
-            start = end if end > start else start + 1
-        return segments
-
     def _namespace_tuple(ns: object) -> tuple:
         if isinstance(ns, str):
             return (ns,)
@@ -424,7 +632,13 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
         response_model = _response_model(chat_request)
         stream_id = str(uuid.uuid4())
         created = datetime.datetime.now(datetime.UTC)
-        assembled: list[str] = []
+        assembled_raw: list[str] = []
+        writer = _StreamDeltaWriter(
+            stream_id=stream_id,
+            created=created,
+            model=response_model,
+            max_chars=_STREAM_MAX_SEGMENT_CHARS,
+        )
 
         async with _agent_session(chat_request) as (agent, messages):
             yield ChatResponseChunk.create_streaming_chunk(
@@ -436,31 +650,24 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             )
             try:
                 async for text in _stream_llm_chunks(agent, messages):
-                    assembled.append(text)
-                    for segment in _iter_stream_segments(text, _STREAM_MAX_SEGMENT_CHARS):
-                        yield ChatResponseChunk.create_streaming_chunk(
-                            segment,
-                            id_=stream_id,
-                            created=created,
-                            model=response_model,
-                        )
+                    assembled_raw.append(text)
+                    for chunk in writer.feed(text):
+                        yield chunk
             except Exception:
                 logger.exception("Token streaming failed; falling back to buffered completion")
                 agent_result = await agent.ainvoke({"messages": messages})
                 result_messages = agent_result["messages"]
                 content = result_messages[-1].content if result_messages else ""
-                content = strip_pattern(content, strip_re)
-                assembled.clear()
-                assembled.append(content)
-                for segment in _iter_stream_segments(content, _STREAM_MAX_SEGMENT_CHARS):
-                    yield ChatResponseChunk.create_streaming_chunk(
-                        segment,
-                        id_=stream_id,
-                        created=created,
-                        model=response_model,
-                    )
+                content = _extract_text_content(content)
+                assembled_raw.clear()
+                assembled_raw.append(content)
+                for chunk in writer.feed(content):
+                    yield chunk
 
-            content = strip_pattern("".join(assembled), strip_re)
+            for chunk in writer.finish():
+                yield chunk
+
+            content = strip_pattern("".join(assembled_raw), strip_re)
 
         usage = _usage_for_content(chat_request, content)
         yield ChatResponseChunk.create_streaming_chunk(
