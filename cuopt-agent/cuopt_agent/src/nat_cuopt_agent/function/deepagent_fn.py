@@ -42,6 +42,10 @@ from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
+# Streaming tuning (not NAT workflow YAML keys — adjust here, not in config-deepagent.yml).
+_STREAM_MAX_SEGMENT_CHARS = 48
+_STREAM_PROGRESS_UPDATES = True
+
 
 class DeepAgentConfig(FunctionBaseConfig, name="deepagent_fn"):
     """Langchain DeepAgents agent that delegates to subagents via create_deep_agent.
@@ -139,23 +143,6 @@ class DeepAgentConfig(FunctionBaseConfig, name="deepagent_fn"):
             "Set to empty string to disable stripping."
         ),
     )
-    stream_max_segment_chars: int = Field(
-        default=48,
-        description=(
-            "When the LLM returns a large text blob in one LangGraph message event, split it into "
-            "multiple OpenAI SSE chunks of at most this many characters (word-aware) so the API "
-            "Catalog UI can render incrementally. Set to 0 to disable splitting."
-        ),
-    )
-    stream_progress_updates: bool = Field(
-        default=True,
-        description=(
-            "Emit short assistant-text progress lines from LangGraph 'updates' stream events "
-            "(e.g. tool steps) while the agent runs. Suppressed for subagent namespaces."
-        ),
-    )
-
-
 @register_function(config_type=DeepAgentConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
 async def deep_agent(config: DeepAgentConfig, builder: Builder):
     import psutil
@@ -388,7 +375,7 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             return
 
         stream_modes: list[str] = ["messages"]
-        if config.stream_progress_updates:
+        if _STREAM_PROGRESS_UPDATES:
             stream_modes.append("updates")
 
         try:
@@ -411,7 +398,7 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             chunk_type = chunk.get("type")
             ns = _namespace_tuple(chunk.get("ns"))
 
-            if chunk_type == "updates" and config.stream_progress_updates:
+            if chunk_type == "updates" and _STREAM_PROGRESS_UPDATES:
                 if _is_subagent_namespace(ns):
                     continue
                 progress = _progress_from_update(chunk)
@@ -450,7 +437,7 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             try:
                 async for text in _stream_llm_chunks(agent, messages):
                     assembled.append(text)
-                    for segment in _iter_stream_segments(text, config.stream_max_segment_chars):
+                    for segment in _iter_stream_segments(text, _STREAM_MAX_SEGMENT_CHARS):
                         yield ChatResponseChunk.create_streaming_chunk(
                             segment,
                             id_=stream_id,
@@ -465,7 +452,7 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
                 content = strip_pattern(content, strip_re)
                 assembled.clear()
                 assembled.append(content)
-                for segment in _iter_stream_segments(content, config.stream_max_segment_chars):
+                for segment in _iter_stream_segments(content, _STREAM_MAX_SEGMENT_CHARS):
                     yield ChatResponseChunk.create_streaming_chunk(
                         segment,
                         id_=stream_id,
