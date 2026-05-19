@@ -139,6 +139,21 @@ class DeepAgentConfig(FunctionBaseConfig, name="deepagent_fn"):
             "Set to empty string to disable stripping."
         ),
     )
+    stream_max_segment_chars: int = Field(
+        default=48,
+        description=(
+            "When the LLM returns a large text blob in one LangGraph message event, split it into "
+            "multiple OpenAI SSE chunks of at most this many characters (word-aware) so the API "
+            "Catalog UI can render incrementally. Set to 0 to disable splitting."
+        ),
+    )
+    stream_progress_updates: bool = Field(
+        default=True,
+        description=(
+            "Emit short assistant-text progress lines from LangGraph 'updates' stream events "
+            "(e.g. tool steps) while the agent runs. Suppressed for subagent namespaces."
+        ),
+    )
 
 
 @register_function(config_type=DeepAgentConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
@@ -278,37 +293,141 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
         usage = _usage_for_content(chat_request, content)
         return ChatResponse.from_string(content, usage=usage, model=_response_model(chat_request))
 
+    def _extract_text_content(content: object) -> str:
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(str(block.get("text", "")))
+                elif hasattr(block, "text"):
+                    parts.append(str(block.text))
+            return "".join(parts)
+        return str(content)
+
+    def _iter_stream_segments(text: str, max_chars: int) -> list[str]:
+        if not text:
+            return []
+        if max_chars <= 0 or len(text) <= max_chars:
+            return [text]
+        segments: list[str] = []
+        start = 0
+        length = len(text)
+        while start < length:
+            end = min(start + max_chars, length)
+            if end < length and text[end - 1] not in " \n\t":
+                boundary = text.rfind(" ", start, end)
+                if boundary > start:
+                    end = boundary + 1
+            segment = text[start:end]
+            if segment:
+                segments.append(segment)
+            start = end if end > start else start + 1
+        return segments
+
+    def _namespace_tuple(ns: object) -> tuple:
+        if isinstance(ns, str):
+            return (ns,)
+        if ns is None:
+            return ()
+        return tuple(ns)
+
+    def _is_subagent_namespace(ns: tuple) -> bool:
+        return any(isinstance(s, str) and s.startswith("tools:") for s in ns)
+
+    def _message_token_text(token: object) -> str:
+        if getattr(token, "type", None) not in ("ai", None):
+            return ""
+        if getattr(token, "tool_call_chunks", None):
+            return ""
+        return _extract_text_content(getattr(token, "content", None))
+
+    def _progress_from_update(chunk: dict) -> str | None:
+        ns = _namespace_tuple(chunk.get("ns"))
+        if _is_subagent_namespace(ns):
+            return None
+        data = chunk.get("data")
+        if not isinstance(data, dict):
+            return None
+        if "tools" in data:
+            return "Running tools…\n"
+        if "model_request" in data and not ns:
+            return None
+        return None
+
     async def _stream_llm_chunks(agent: object, messages: list) -> AsyncGenerator[str, None]:
-        """Yield main-agent assistant text segments (async generator for typing)."""
+        """Yield main-agent assistant text (LLM tokens and optional progress lines)."""
+
+        async def _yield_from_astream_events() -> AsyncGenerator[str, None]:
+            astream_events = getattr(agent, "astream_events", None)
+            if astream_events is None:
+                return
+            async for event in astream_events({"messages": messages}, version="v2"):
+                if not isinstance(event, dict) or event.get("event") != "on_chat_model_stream":
+                    continue
+                data = event.get("data") or {}
+                llm_chunk = data.get("chunk")
+                text = _message_token_text(llm_chunk)
+                if text:
+                    yield text
+
+        emitted = False
+        try:
+            async for text in _yield_from_astream_events():
+                emitted = True
+                yield text
+        except Exception:
+            logger.debug("astream_events token stream unavailable", exc_info=True)
+
+        if emitted:
+            return
+
+        stream_modes: list[str] = ["messages"]
+        if config.stream_progress_updates:
+            stream_modes.append("updates")
+
         try:
             astream = agent.astream(
                 {"messages": messages},
-                stream_mode="messages",
+                stream_mode=stream_modes,
                 subgraphs=True,
                 version="v2",
             )
         except TypeError:
-            astream = agent.astream({"messages": messages}, stream_mode="messages", subgraphs=True)
+            astream = agent.astream(
+                {"messages": messages},
+                stream_mode="messages",
+                subgraphs=True,
+            )
 
         async for chunk in astream:
-            if not isinstance(chunk, dict) or chunk.get("type") != "messages":
+            if not isinstance(chunk, dict):
+                continue
+            chunk_type = chunk.get("type")
+            ns = _namespace_tuple(chunk.get("ns"))
+
+            if chunk_type == "updates" and config.stream_progress_updates:
+                if _is_subagent_namespace(ns):
+                    continue
+                progress = _progress_from_update(chunk)
+                if progress:
+                    yield progress
+                continue
+
+            if chunk_type != "messages":
+                continue
+            if _is_subagent_namespace(ns):
                 continue
             payload = chunk.get("data")
             if not isinstance(payload, (list, tuple)) or len(payload) < 1:
                 continue
             token = payload[0]
-            ns = chunk.get("ns")
-            if isinstance(ns, str):
-                ns = (ns,)
-            elif ns is None:
-                ns = ()
-            if any(isinstance(s, str) and s.startswith("tools:") for s in ns):
-                continue
-            if getattr(token, "type", None) != "ai":
-                continue
-            if getattr(token, "tool_call_chunks", None):
-                continue
-            text = getattr(token, "content", None) or ""
+            text = _message_token_text(token)
             if text:
                 yield text
 
@@ -331,12 +450,13 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
             try:
                 async for text in _stream_llm_chunks(agent, messages):
                     assembled.append(text)
-                    yield ChatResponseChunk.create_streaming_chunk(
-                        text,
-                        id_=stream_id,
-                        created=created,
-                        model=response_model,
-                    )
+                    for segment in _iter_stream_segments(text, config.stream_max_segment_chars):
+                        yield ChatResponseChunk.create_streaming_chunk(
+                            segment,
+                            id_=stream_id,
+                            created=created,
+                            model=response_model,
+                        )
             except Exception:
                 logger.exception("Token streaming failed; falling back to buffered completion")
                 agent_result = await agent.ainvoke({"messages": messages})
@@ -345,12 +465,13 @@ async def deep_agent(config: DeepAgentConfig, builder: Builder):
                 content = strip_pattern(content, strip_re)
                 assembled.clear()
                 assembled.append(content)
-                yield ChatResponseChunk.create_streaming_chunk(
-                    content,
-                    id_=stream_id,
-                    created=created,
-                    model=response_model,
-                )
+                for segment in _iter_stream_segments(content, config.stream_max_segment_chars):
+                    yield ChatResponseChunk.create_streaming_chunk(
+                        segment,
+                        id_=stream_id,
+                        created=created,
+                        model=response_model,
+                    )
 
             content = strip_pattern("".join(assembled), strip_re)
 
