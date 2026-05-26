@@ -21,10 +21,19 @@
 #   apply-policy [NAME]    Add cuOpt network policy to a running sandbox.
 #   install [NAME]         Install cuOpt packages in the sandbox venv and stamp
 #                          an auto-activation block into /sandbox/.bashrc.
+#                          If a wheel cache exists at $CUOPT_WHEEL_CACHE matching
+#                          the package set + sandbox python, install offline.
 #   install-bashrc [NAME]  Re-stamp the auto-activation block in /sandbox/.bashrc
 #                          without reinstalling the venv (useful after changing
 #                          CUOPT_HOST, CUOPT_PORT, or CUOPT_VENV).
 #   install-skill [NAME]   Upload the cuOpt skill into the sandbox.
+#   cache-wheels [NAME]    Snapshot a sandbox's already-installed wheels into
+#                          $CUOPT_WHEEL_CACHE. NAME must already have cuOpt
+#                          installed (run `add` or `install` against it
+#                          online once first). Subsequent `install` / `add`
+#                          runs against any sandbox reuse the cache and
+#                          install offline.
+#   clear-wheel-cache      Remove $CUOPT_WHEEL_CACHE.
 #   test [NAME]            Smoke-test PyPI + cuOpt server reachability.
 #
 # Flags:
@@ -64,12 +73,20 @@
 #                          works, but its CSR-matrix inputs are awkward to
 #                          build from an agent; the Python API is strictly
 #                          easier. Override this to ship them anyway.
+#   CUOPT_WHEEL_CACHE  Host directory holding snapshotted cuOpt wheels.
+#                      (default: ${XDG_CACHE_HOME:-~/.cache}/cuopt-wheels)
+#                      Populated by `cache-wheels` (snapshots from a
+#                      sandbox that already has cuOpt installed). `install`
+#                      auto-detects the matching subdir and uploads it for
+#                      offline install.
 #
 # Examples:
-#   ./nemoclaw_cuopt_setup.sh add cuopt        # Add cuOpt to sandbox "cuopt"
-#   ./nemoclaw_cuopt_setup.sh add my-assistant # Add cuOpt to any sandbox
-#   ./nemoclaw_cuopt_setup.sh apply-policy bob # Just fix network policy
-#   ./nemoclaw_cuopt_setup.sh test cuopt       # Re-run smoke test
+#   ./nemoclaw_cuopt_setup.sh add cuopt              # Slow first install (online)
+#   ./nemoclaw_cuopt_setup.sh cache-wheels cuopt     # Snapshot wheels to host
+#   nemoclaw delete cuopt && nemoclaw create cuopt   # Recreate sandbox
+#   ./nemoclaw_cuopt_setup.sh add cuopt              # Now installs offline (fast)
+#   ./nemoclaw_cuopt_setup.sh apply-policy bob       # Just fix network policy
+#   ./nemoclaw_cuopt_setup.sh test cuopt             # Re-run smoke test
 #
 # Version compatibility:
 #   The TESTED_NEMOCLAW_VERSION / TESTED_OPENSHELL_VERSION constants below
@@ -107,6 +124,31 @@ CUOPT_SKILLS_REPO="${CUOPT_SKILLS_REPO:-NVIDIA/cuopt}"
 TESTED_CUOPT_SKILLS_REF="main"
 CUOPT_SKILLS_REF="${CUOPT_SKILLS_REF:-${TESTED_CUOPT_SKILLS_REF}}"
 CUOPT_SKILLS_SKIP="${CUOPT_SKILLS_SKIP:-*installation*,*developer*,*-api-c}"
+
+# ── pip-package set (single source of truth) ─────────────────────
+# Pinned packages installed by cmd_install AND fetched by cmd_cache_wheels.
+# Edit here once; the cache key incorporates this string's hash so version
+# bumps automatically invalidate stale caches.
+CUOPT_PIP_PACKAGES="${CUOPT_PIP_PACKAGES:-cuopt-sh-client cuopt-cu13==26.04 grpcio}"
+CUOPT_PIP_EXTRA_INDEX="${CUOPT_PIP_EXTRA_INDEX:-https://pypi.nvidia.com}"
+
+# ── wheel cache (host-side, snapshotted from a sandbox) ─────────
+# `cache-wheels` snapshots an already-installed sandbox's resolved wheel
+# set into this dir, then `install` uploads it back to a fresh sandbox
+# for offline pip install. XDG-compliant; safe to rm -rf at any time
+# (a cache miss reverts to online install).
+#
+# We snapshot from a sandbox rather than running `pip download` on the
+# host because cuOpt's transitive deps trigger pip resolver backtracking
+# through every cuda-toolkit 13.x release (~1 GB of needless downloads).
+# Resolution-already-done in the sandbox + `pip download --no-deps -r
+# <(pip freeze)` sidesteps that entirely.
+CUOPT_WHEEL_CACHE="${CUOPT_WHEEL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cuopt-wheels}"
+# Sandbox-side staging dir (also serves as the install-time upload target).
+# Lives under /sandbox/.openclaw-data because Landlock marks /sandbox itself
+# read-only.
+CUOPT_SANDBOX_WHEEL_DIR="/sandbox/.openclaw-data/wheels"
+
 FORCE=false
 
 # ── Tested NemoClaw / OpenShell versions ──────────────────────────
@@ -119,8 +161,8 @@ FORCE=false
 #     curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
 # Silence the banner with NEMOCLAW_VERSION_CHECK=0.
-TESTED_NEMOCLAW_VERSION="0.0.30"
-TESTED_OPENSHELL_VERSION="0.0.36"
+TESTED_NEMOCLAW_VERSION="0.0.48"
+TESTED_OPENSHELL_VERSION="0.0.39"
 
 # ── NemoClaw / OpenShell version compatibility check ─────────────
 # Non-fatal. Prints a warning banner when the installed tool version
@@ -230,30 +272,17 @@ find_nemoclaw_root() {
 
 
 
-# ── Detect the exact Python binary path inside the sandbox image ──
-# OpenShell requires exact binary paths (no globs).
+# ── Pick the Python binary path inside the sandbox ────────────────
+# We deliberately use the unversioned /usr/bin/python3 symlink (always
+# present across NemoClaw base-image bumps) rather than version-pinning,
+# and the policy enumerates python3.10–3.13 so any minor version works.
+# Use CUOPT_PYTHON_BIN to override.
 detect_python_bin() {
   if [[ -n "$CUOPT_PYTHON_BIN" ]]; then
     echo "$CUOPT_PYTHON_BIN"
     return
   fi
-
-  # Try detecting from a running sandbox
-  local sandbox="${1:-}"
-  if [[ -n "$sandbox" ]]; then
-    local resolved
-    resolved="$(echo 'readlink -f /usr/bin/python3 && exit' \
-                | openshell sandbox connect "$sandbox" 2>/dev/null \
-                | grep '^/usr/bin/python3' | head -1)"
-    if [[ -n "$resolved" ]]; then
-      echo "$resolved"
-      return
-    fi
-  fi
-
-  echo >&2 "  (no running sandbox to detect from — using default /usr/bin/python3.11;"
-  echo >&2 "   set CUOPT_PYTHON_BIN to override)"
-  echo "/usr/bin/python3.11"
+  echo "/usr/bin/python3"
 }
 
 # ── Detect the Docker host IP (for allowed_ips in policy) ─────────
@@ -268,16 +297,19 @@ detect_host_ip() {
   local sandbox="${1:-}"
   if [[ -n "$sandbox" ]]; then
     local ip
+    # OpenShell v0.0.36+ wraps connect output with bracketed-paste ANSI
+    # escapes (\e[?2004l). Strip them before grepping for an IP.
     ip="$(echo 'getent hosts host.openshell.internal | awk "{print \$1}" && exit' \
           | openshell sandbox connect "$sandbox" 2>/dev/null \
-          | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          | sed 's/\x1b\[[?0-9;]*[a-zA-Z]//g' \
+          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
     if [[ -n "$ip" ]]; then
       echo "$ip"
       return
     fi
   fi
 
-  echo >&2 "  (no running sandbox to detect from — using default 172.17.0.1;"
+  echo >&2 "  (could not detect host IP from sandbox — using default 172.17.0.1;"
   echo >&2 "   set CUOPT_HOST_IP to override)"
   echo "172.17.0.1"
 }
@@ -477,8 +509,30 @@ print_ufw_unknown_hint() {
   echo ""
 }
 
+# ── Python binary enumeration for policy ─────────────────────────
+# OpenShell enforces literal binary path matching, so we enumerate every
+# Python interpreter the sandbox might end up using: the unversioned
+# /usr/bin/python3 symlink, every supported minor version (3.10–3.13),
+# the same set inside the venv created by `add`, and pip front-ends.
+# That way a NemoClaw base-image bump from python3.11 → python3.13 (or
+# similar) doesn't silently 403 every pip request from the venv.
+python_binaries_block() {
+  local indent="${1:-      }"
+  local venv="/sandbox/${CUOPT_VENV}"
+  local p
+  for p in /usr/bin/python3 \
+           /usr/bin/python3.10 /usr/bin/python3.11 \
+           /usr/bin/python3.12 /usr/bin/python3.13 \
+           "${venv}/bin/python3" \
+           "${venv}/bin/python3.10" "${venv}/bin/python3.11" \
+           "${venv}/bin/python3.12" "${venv}/bin/python3.13" \
+           "${venv}/bin/pip" "${venv}/bin/pip3" \
+           /usr/bin/pip /usr/bin/pip3; do
+    printf '%s- { path: %s }\n' "$indent" "$p"
+  done
+}
+
 # ── Policy entry generation (used by apply-policy) ───────────────
-# OpenShell binary paths must be exact — globs (*, **) are silently ignored.
 # Hostname endpoints require allowed_ips so the proxy can match resolved IPs.
 generate_policy_entries() {
   local sandbox="${1:-}"
@@ -499,11 +553,15 @@ generate_policy_entries() {
         port: ${CUOPT_GRPC_PORT}"
   fi
 
+  local pybins
+  pybins="$(python_binaries_block)"
+
   cat <<YAML
 
   # ── cuOpt: PyPI + NVIDIA PyPI + cuOpt server (nvidia-cuopt cuopt_claw) ──
-  # Binary paths must be exact (no globs) — OpenShell enforces literal matching.
   # Hostname endpoints need allowed_ips for the proxy to match resolved IPs.
+  # Binary lists enumerate every Python the sandbox might use (system +
+  # venv at /sandbox/${CUOPT_VENV}/bin) so pip works from any of them.
   pypi_public:
     name: pypi-public
     endpoints:
@@ -512,7 +570,7 @@ generate_policy_entries() {
       - host: files.pythonhosted.org
         port: 443
     binaries:
-      - { path: ${python_bin} }
+${pybins}
 
   nvidia_pypi:
     name: nvidia-pypi
@@ -520,7 +578,7 @@ generate_policy_entries() {
       - host: pypi.nvidia.com
         port: 443
     binaries:
-      - { path: ${python_bin} }
+${pybins}
 
   cuopt_host:
     name: cuopt-host
@@ -542,7 +600,7 @@ generate_policy_entries() {
         allowed_ips:
           - ${host_ip}${remote_endpoint}
     binaries:
-      - { path: ${python_bin} }
+${pybins}
       - { path: /usr/bin/curl }
 YAML
 }
@@ -589,45 +647,217 @@ cmd_apply_policy() {
 }
 
 
+# ── wheel cache helpers ───────────────────────────────────────────
+# Cache subdir = sha256(package set) so version bumps invalidate the
+# cache. We don't include a platform tag because the snapshotted wheels
+# are tagged for whatever the sandbox's actual python is — pip honors
+# those tags at install time without us second-guessing.
+wheel_cache_subdir() {
+  local h
+  h="$(printf '%s' "$CUOPT_PIP_PACKAGES" | sha256sum | head -c 12)"
+  printf '%s' "$h"
+}
+
+wheel_cache_dir() {
+  printf '%s/%s' "$CUOPT_WHEEL_CACHE" "$(wheel_cache_subdir)"
+}
+
+# True iff $cache has at least one .whl file. Treats empty / missing dir
+# as miss so we never try to install from a half-populated cache.
+wheel_cache_present() {
+  local d="$(wheel_cache_dir)"
+  [[ -d "$d" ]] && compgen -G "$d/*.whl" > /dev/null
+}
+
+# ── cache-wheels ──────────────────────────────────────────────────
+# Snapshot a sandbox's already-installed cuOpt wheels into the host cache.
+# Requires the sandbox to have CUOPT_PIP_PACKAGES installed in its venv
+# (i.e. you've already run `add` or `install` against it once, online).
+# Subsequent fresh sandboxes will reuse this cache and install offline.
+#
+# Implementation note: we go through the gateway container's kubectl
+# (same path install_bashrc_activation uses) instead of `openshell
+# sandbox exec` / `download`, because the latter hang in current
+# nemoclaw builds while the kubectl path returns in <1s. Tar-piped
+# extraction sidesteps `kubectl cp` (which silently no-ops via
+# `docker exec`).
+cmd_cache_wheels() {
+  local sandbox="${1:-$CUOPT_SANDBOX}"
+  local cache_dir; cache_dir="$(wheel_cache_dir)"
+  local sandbox_venv="/sandbox/${CUOPT_VENV}"
+  local sandbox_stage="/sandbox/.openclaw-data/wheels-snapshot"
+  local gw="${GATEWAY_CONTAINER:-openshell-cluster-nemoclaw}"
+  local ns="${K8S_NAMESPACE:-openshell}"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "error: docker not found on host — gateway-container kubectl path required" >&2
+    exit 2
+  fi
+
+  # Helper: run a command in the sandbox via gateway kubectl. Quiets the
+  # 'Defaulted container "agent"' chatter that kubectl exec writes to stderr.
+  _sb_exec() {
+    docker exec "$gw" kubectl exec -n "$ns" "$sandbox" -- "$@" 2> >(grep -v '^Defaulted container ' >&2)
+  }
+
+  echo "Snapshotting cuOpt wheels from sandbox '$sandbox':"
+  echo "  venv : $sandbox_venv"
+  echo "  cache: $cache_dir"
+
+  # 1. Verify sandbox venv has cuopt installed. Cheap (<1s).
+  if ! _sb_exec "$sandbox_venv/bin/python" -c \
+         "import cuopt_sh_client" >/dev/null 2>&1; then
+    cat >&2 <<EOF
+error: sandbox '$sandbox' does not have a working cuOpt venv at
+       $sandbox_venv. Run './nemoclaw_cuopt_setup.sh install $sandbox'
+       (or 'add $sandbox') first to do the slow online install once;
+       then 'cache-wheels' will snapshot the resolved wheels for
+       offline reuse.
+EOF
+    exit 2
+  fi
+
+  # 2. In the sandbox: freeze + pip download --no-deps. With exact-version
+  #    pins and --no-deps, pip does zero resolution; wheels come from
+  #    pip's HTTP cache (already populated during the prior install, so
+  #    this step usually uses no network).
+  echo "  Step 1/3: freezing sandbox venv and downloading exact-version wheels ..."
+  # Run pip download AS the sandbox user (uid 998), not as root. Two reasons:
+  #   1. The original install populated pip's HTTP cache at /tmp/.cache/pip
+  #      owned by uid 998. Running as root sees a non-writable cache, pip
+  #      "disables" it, and re-downloads everything from PyPI (~30 min on
+  #      slow links). Running as sandbox uses the warm cache (seconds).
+  #   2. With --cache-dir disabled, pip's `save_linked_requirement` step
+  #      occasionally hits FileNotFoundError on the last copy (no idea why,
+  #      cache-disabled mode is poorly tested). Going through the cache
+  #      path avoids that whole code branch.
+  local inner_script
+  inner_script=$(cat <<INNER
+set -e
+rm -rf '$sandbox_stage'
+mkdir -p '$sandbox_stage'
+'$sandbox_venv/bin/pip' freeze \\
+  | grep -viE '^(pip|setuptools|wheel)==' \\
+  > '$sandbox_stage/requirements.txt'
+n_pkgs=\$(wc -l < '$sandbox_stage/requirements.txt')
+echo "    frozen \$n_pkgs packages"
+'$sandbox_venv/bin/pip' download \\
+  --no-deps \\
+  --dest '$sandbox_stage' \\
+  --extra-index-url='$CUOPT_PIP_EXTRA_INDEX' \\
+  --requirement '$sandbox_stage/requirements.txt' \\
+  --quiet
+n_whl=\$(ls -1 '$sandbox_stage'/*.whl 2>/dev/null | wc -l)
+sz=\$(du -sh '$sandbox_stage' 2>/dev/null | cut -f1)
+echo "    downloaded \$n_whl wheels (\$sz) to $sandbox_stage"
+INNER
+  )
+  if ! _sb_exec runuser -u sandbox -- bash -c "$inner_script"; then
+    echo "" >&2
+    echo "error: in-sandbox pip download failed. Stage dir: $sandbox_stage" >&2
+    exit 1
+  fi
+
+  # 3. Tar-pipe out to host cache. kubectl cp is silently broken when run
+  #    via docker exec (returns 0, copies nothing); a tar pipe through
+  #    kubectl exec is the documented k8s alternative and works reliably.
+  echo "  Step 2/3: tar-piping snapshot to host cache ..."
+  rm -rf "$cache_dir"
+  mkdir -p "$cache_dir"
+  local stage_parent stage_name
+  stage_parent="$(dirname "$sandbox_stage")"
+  stage_name="$(basename "$sandbox_stage")"
+  if ! _sb_exec tar -C "$stage_parent" -cf - "$stage_name" \
+       | tar -C "$cache_dir" -xf - --strip-components=1; then
+    echo "" >&2
+    echo "error: tar-pipe extract failed. cache_dir=$cache_dir" >&2
+    exit 1
+  fi
+
+  echo "  Step 3/3: verifying ..."
+  local n; n="$(ls -1 "$cache_dir"/*.whl 2>/dev/null | wc -l)"
+  local sz; sz="$(du -sh "$cache_dir" 2>/dev/null | cut -f1)"
+  if [[ "$n" -lt 5 ]]; then
+    echo "" >&2
+    echo "error: only $n wheels in $cache_dir; expected >=5 (cuopt-cu13 alone" >&2
+    echo "       has many transitive wheels). Snapshot looks incomplete." >&2
+    exit 1
+  fi
+
+  # Best-effort: clean up the sandbox-side stage dir so we don't leave
+  # ~1 GB of wheels lingering in the agent's writable filesystem.
+  _sb_exec rm -rf "$sandbox_stage" >/dev/null 2>&1 || true
+
+  echo ""
+  echo "Cached $n wheels ($sz) in $cache_dir"
+  echo "Subsequent './nemoclaw_cuopt_setup.sh install' / 'add' will install offline."
+}
+
+# ── clear-wheel-cache ─────────────────────────────────────────────
+cmd_clear_wheel_cache() {
+  if [[ -d "$CUOPT_WHEEL_CACHE" ]]; then
+    local sz; sz="$(du -sh "$CUOPT_WHEEL_CACHE" 2>/dev/null | cut -f1)"
+    rm -rf "$CUOPT_WHEEL_CACHE"
+    echo "Removed $CUOPT_WHEEL_CACHE ($sz)"
+  else
+    echo "No wheel cache at $CUOPT_WHEEL_CACHE"
+  fi
+}
+
 # ── install ───────────────────────────────────────────────────────
 cmd_install() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
   local venv="/sandbox/${CUOPT_VENV}"
   echo "Installing cuopt_sh_client in ${venv} venv (sandbox: $sandbox) ..."
 
-  # Detect the sandbox's Python and check it against the policy.
+  # We use the unversioned /usr/bin/python3 symlink (or CUOPT_PYTHON_BIN
+  # override) and the policy enumerates every minor version, so no
+  # version-mismatch check is needed here. The pip output below will show
+  # exactly which wheel + Python version got resolved.
   local actual_python
   actual_python="$(detect_python_bin "$sandbox")"
   echo "Sandbox Python binary: $actual_python"
 
-  local root policy_file
-  root="$(find_nemoclaw_root 2>/dev/null || true)"
-  if [[ -n "$root" ]]; then
-    policy_file="$root/nemoclaw-blueprint/policies/openclaw-sandbox.yaml"
-    if [[ -f "$policy_file" ]] && grep -q 'cuopt_host:' "$policy_file"; then
-      local policy_python
-      policy_python="$(grep -A 20 'cuopt_host:' "$policy_file" \
-                       | grep '{ path: /usr/bin/python' \
-                       | head -1 \
-                       | sed 's/.*{ path: \([^ }]*\).*/\1/')"
-      if [[ -n "$policy_python" && "$policy_python" != "$actual_python" ]]; then
-        echo ""
-        echo "WARNING: Python version mismatch!"
-        echo "  Sandbox has:    $actual_python"
-        echo "  Policy expects: $policy_python"
-        echo ""
-        echo "  Network requests from Python will be blocked (403 Forbidden)."
-        echo "  Fix: re-run apply-policy to update the policy:"
-        echo "    $0 apply-policy $sandbox"
-        echo ""
-      fi
+  # Build the venv with the explicit interpreter path so it stays consistent
+  # across base-image bumps. After activation we use bare `python3` / `pip`
+  # so they resolve to the venv shims (otherwise we'd shadow the venv with
+  # the system interpreter).
+  #
+  # We install cuopt-cu13 even though execution is remote: the agent builds
+  # problems with the cuopt Python API, which has to import cuopt.* — those
+  # imports require the package to be installed locally. The CUOPT_SERVER
+  # env var (set in install_bashrc_activation) routes the actual solve to
+  # the remote server, so CUDA never gets loaded in the sandbox. cu13 is
+  # used because the host driver is CUDA 13.x; switch to cuopt-cu12 by
+  # editing this line if your host driver is CUDA 12.x.
+
+  # Decide online vs offline-from-cache. The cache is keyed by the
+  # CUOPT_PIP_PACKAGES hash, so editing the package set automatically
+  # invalidates the cache and we never silently install an out-of-date
+  # set. (Wheel platform tags are baked into the snapshotted .whl
+  # filenames; pip honors them at install time.)
+  local pip_install_line
+  if wheel_cache_present; then
+    local cache_dir; cache_dir="$(wheel_cache_dir)"
+    local n; n="$(ls -1 "$cache_dir"/*.whl 2>/dev/null | wc -l)"
+    echo "  Wheel cache hit ($n wheels in $cache_dir); uploading and installing offline."
+    if ! openshell sandbox upload "$sandbox" "$cache_dir/" "$CUOPT_SANDBOX_WHEEL_DIR" 2>&1; then
+      echo "  warning: wheel cache upload failed; falling back to online install" >&2
+      pip_install_line="pip install $CUOPT_PIP_PACKAGES --extra-index-url=$CUOPT_PIP_EXTRA_INDEX"
+    else
+      pip_install_line="pip install --no-index --find-links=$CUOPT_SANDBOX_WHEEL_DIR $CUOPT_PIP_PACKAGES"
     fi
+  else
+    echo "  No wheel cache at $(wheel_cache_dir); installing online from PyPI."
+    echo "  (Run './nemoclaw_cuopt_setup.sh cache-wheels' once to make subsequent installs fast.)"
+    pip_install_line="pip install $CUOPT_PIP_PACKAGES --extra-index-url=$CUOPT_PIP_EXTRA_INDEX"
   fi
 
   local commands=(
-    "python3 -m venv ${venv}"
+    "${actual_python} -m venv ${venv}"
     "source ${venv}/bin/activate"
-    "pip install cuopt-sh-client cuopt-cu12==26.04 grpcio --extra-index-url=https://pypi.nvidia.com"
+    "python3 -V"
+    "${pip_install_line}"
     "python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__version__)\""
     "exit"
   )
@@ -921,12 +1151,25 @@ cmd_install_skill() {
   local -a uploaded_names=()
   local name
 
+  # ── upload semantics note ──────────────────────────────────────────
+  # In openshell >= 0.0.38, `sandbox upload <SRC_DIR> <DST_DIR>` copies
+  # SRC_DIR as a *named subdirectory* of DST_DIR (so DST_DIR/<basename of
+  # SRC_DIR> ends up populated). Older openshell versions treated DST as
+  # the destination directory itself and copied SRC's *contents* into it.
+  #
+  # We rely on the new semantics: pass the PARENT path
+  # ("/sandbox/.openclaw/skills/") as DST so each skill dir lands at
+  # the depth OpenClaw's loader expects: <extraDir>/<name>/SKILL.md.
+  # Passing "/sandbox/.openclaw/skills/$name" under new semantics would
+  # nest as <extraDir>/<name>/<name>/SKILL.md and the loader would
+  # silently skip every skill (see types.skills.d.ts: "Each directory
+  # should contain skill subfolders with SKILL.md.").
   echo "Installing skills into sandbox '$sandbox' ..."
   for skill in "$skills_dir"/*/; do
     name="$(basename "$skill")"
     if [[ -f "$skill/SKILL.md" ]]; then
       echo "  Uploading local skill: $name"
-      if openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/$name" 2>&1; then
+      if openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/" 2>&1; then
         uploaded_names+=("$name")
       else
         echo "  warning: upload failed for skill '$name'" >&2
@@ -980,7 +1223,9 @@ cmd_install_skill() {
       fi
 
       echo "  Uploading upstream skill: $upstream_name"
-      if ! openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/$upstream_name" 2>&1; then
+      # Parent-dir destination per openshell >= 0.0.38 semantics (see
+      # "upload semantics note" above the local-skill upload loop).
+      if ! openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/" 2>&1; then
         echo "  warning: upload failed for upstream skill '$upstream_name'" >&2
       fi
     done
@@ -1070,31 +1315,27 @@ GUARDRAIL
     2>/dev/null \
   || echo "  warning: could not install cuopt-setup guardrail (non-fatal)" >&2
 
-  # ── invalidate cached <available_skills> snapshot ───────────────────
-  # OpenClaw caches the skills prompt in a per-session snapshot stored in
-  # ~/.openclaw/agents/<id>/sessions/sessions.json. The snapshot is built
-  # on the agent's first run and reused thereafter, so skills uploaded
-  # *after* that first run never appear in <available_skills>.
+  # ── register /sandbox/.openclaw/skills/ as a scanned skills root ──
+  # OpenClaw 2026.x's skills loader scans a small fixed set of paths
+  # (bundled, workspace, plugin-provided) plus any directories listed
+  # in skills.load.extraDirs (see plugin-sdk/src/config/types.skills.d.ts:
+  # SkillsLoadConfig.extraDirs — "Additional skill folders to scan
+  # (lowest precedence). Each directory should contain skill subfolders
+  # with SKILL.md."). Without that entry, our uploaded skills are
+  # invisible to `openclaw skills list` and the agent's <available_skills>
+  # prompt section — even though the files exist on disk.
   #
-  # The supported invalidation hook is the gateway's openclaw.json
-  # watcher (openclaw/src/gateway/config-reload.ts): when any path
-  # under `skills.*` changes, it bumps the snapshot version and the
-  # next agent run rebuilds the prompt from disk.
-  #
-  # We use only schema-defined keys (SkillsLoadConfig.watch /
-  # watchDebounceMs and SkillConfig.config) so the resulting config
-  # remains valid:
-  #   • skills.load.watch=true                            — best-effort
-  #     filesystem-watch invalidation for future drops; chokidar inside
-  #     the sandbox is not always reliable so we don't rely on it.
-  #   • skills.entries.cuopt-sandbox.config.lastInstallAt — a fresh ISO
-  #     timestamp on every install guarantees a non-empty config diff
-  #     even if `watch` is already true.
-  echo "  Invalidating cached skills snapshot via openclaw.json update ..."
+  # We also set skills.load.watch so the snapshot refreshes when files
+  # change. The earlier mechanism (bumping skills.entries.X.config.* to
+  # invalidate a per-session snapshot via a gateway config-reload watcher)
+  # was tied to an older OpenClaw layout and no longer triggers discovery;
+  # the discovery itself now keys off extraDirs membership.
+  echo "  Registering /sandbox/.openclaw/skills as an extra skills root ..."
   local invalidator
   invalidator='
-import json, os, sys, time, tempfile
+import json, os, sys, tempfile
 cfg_path = "/sandbox/.openclaw/openclaw.json"
+extra_dir = "/sandbox/.openclaw/skills"
 try:
     with open(cfg_path) as f:
         cfg = json.load(f)
@@ -1105,12 +1346,23 @@ except Exception as e:
     sys.exit(1)
 skills = cfg.setdefault("skills", {})
 load = skills.setdefault("load", {})
-load["watch"] = True
+existing = load.get("extraDirs") or []
+# Idempotent: dedupe while preserving order, append ours if missing.
+if extra_dir not in existing:
+    existing = existing + [extra_dir]
+load["extraDirs"] = existing
+load.setdefault("watch", True)
 load.setdefault("watchDebounceMs", 250)
-entries = skills.setdefault("entries", {})
-sentinel = entries.setdefault("cuopt-sandbox", {})
-sentinel_cfg = sentinel.setdefault("config", {})
-sentinel_cfg["lastInstallAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+# Drop the obsolete sentinel from the prior mechanism if present so the
+# config stays clean. The new loader ignores skills.entries.X.config
+# for discovery purposes.
+entries = skills.get("entries") or {}
+if "cuopt-sandbox" in entries and set(entries["cuopt-sandbox"].keys()) <= {"config"}:
+    del entries["cuopt-sandbox"]
+    if entries:
+        skills["entries"] = entries
+    else:
+        skills.pop("entries", None)
 fd, tmp = tempfile.mkstemp(prefix=".openclaw.", dir=os.path.dirname(cfg_path))
 try:
     with os.fdopen(fd, "w") as f:
@@ -1121,14 +1373,15 @@ except Exception:
     if os.path.exists(tmp):
         os.unlink(tmp)
     raise
-print("    skills.entries.cuopt-sandbox.config.lastInstallAt=" + sentinel_cfg["lastInstallAt"])
+print("    skills.load.extraDirs=" + json.dumps(existing))
 '
   local invalidator_b64
   invalidator_b64="$(printf '%s' "$invalidator" | base64 -w 0)"
   if ! openshell sandbox exec --name "$sandbox" --no-tty -- \
         bash -c "echo '${invalidator_b64}' | base64 -d | python3" 2>&1; then
-    echo "  warning: failed to bump openclaw.json — agent may continue using a stale" >&2
-    echo "           skills snapshot until the next config change or a fresh onboard" >&2
+    echo "  warning: failed to update openclaw.json — uploaded skills will not appear" >&2
+    echo "           in 'openclaw skills list' or the agent's <available_skills> prompt" >&2
+    echo "           until skills.load.extraDirs includes /sandbox/.openclaw/skills" >&2
   fi
 
   echo "Skills installed."
@@ -1182,7 +1435,7 @@ cmd_add() {
 
 # ── dispatch ──────────────────────────────────────────────────────
 usage() {
-  sed -n '16,70p' "$0"
+  sed -n '16,101p' "$0"
 }
 
 main() {
@@ -1206,13 +1459,15 @@ main() {
   esac
 
   case "${sub}" in
-    apply-policy)   cmd_apply_policy "${1:-}" ;;
-    install)        cmd_install "${1:-}" ;;
-    install-bashrc) cmd_install_bashrc "${1:-}" ;;
-    install-skill)  cmd_install_skill "${1:-}" ;;
-    test)           cmd_test "${1:-}" ;;
-    add)            cmd_add "${1:-}" ;;
-    help|-h|--help) usage ;;
+    apply-policy)      cmd_apply_policy "${1:-}" ;;
+    install)           cmd_install "${1:-}" ;;
+    install-bashrc)    cmd_install_bashrc "${1:-}" ;;
+    install-skill)     cmd_install_skill "${1:-}" ;;
+    cache-wheels)      cmd_cache_wheels "${1:-}" ;;
+    clear-wheel-cache) cmd_clear_wheel_cache ;;
+    test)              cmd_test "${1:-}" ;;
+    add)               cmd_add "${1:-}" ;;
+    help|-h|--help)    usage ;;
     *)
       echo "unknown command: ${sub:-<none>}" >&2
       usage >&2
