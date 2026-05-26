@@ -14,6 +14,42 @@ This skill covers **sandbox-specific** setup — networking, venv, and connectiv
 > you accidentally invoked a local solve — set `CUOPT_REMOTE_HOST` and
 > `CUOPT_REMOTE_PORT` to use the remote service instead.
 
+## Finding the shell, file, and editing tools (NemoClaw catalog)
+
+This sandbox runs under NemoClaw, which by default exposes only three
+meta-tools to the model — `tool_search`, `tool_describe`, `tool_call` —
+and hides every real tool (`exec`, `read`, `write`, `edit`, `process`,
+…) behind that catalog. If your tool list shows only those three, the
+real tools are not missing; they are reachable via the catalog.
+
+Use them in this order:
+
+1. `tool_search` with `{query: ""}` and `{limit: 20}` lists the catalog;
+   `{query: "shell"}` or `{query: "file"}` narrows by topic.
+2. `tool_describe` with `{name: "<tool>"}` returns the parameter schema.
+   Call this once before the first invocation of any new tool.
+3. `tool_call` with `{name: "<tool>", arguments: {…}}` runs it.
+
+The capabilities the rest of this skill assumes:
+
+| Capability | Search term | Tool name | Typical args |
+|---|---|---|---|
+| Run any shell command (ls, source, python3, …) | `shell` / `exec` | `exec` | `{command: "ls -1 …"}` |
+| Read a known file path | `read` | `read` | `{path: "/sandbox/…"}` |
+| Write / edit a file | `write` / `edit` | `write` / `edit` | see `tool_describe` |
+
+Every shell example below — `ls -1 /sandbox/.openclaw/skills/`, sourcing
+the venv, `python3 /sandbox/probe_cuopt.py`, the LP smoke test — is
+dispatched as `tool_call` with `name: "exec"` and
+`arguments: {command: "<the command>"}`.
+
+If `tool_search` with an empty query returns only the three catalog
+tools themselves, no real tools were registered for this session — that
+is a gateway setup problem, not a discovery problem; report it to the
+operator. If your tool list already includes `exec` / `read` / etc.
+directly, the compact catalog is disabled; call those tools directly and
+ignore this section.
+
 ## Always use cuOpt when it is available
 
 If the user's task is an LP, MILP, QP, or vehicle-routing problem **and**
@@ -47,9 +83,57 @@ pedagogy defeats the purpose. Always:
 
 When in doubt, run cuOpt.
 
+## Remote-first — never try a local solve before the remote service
+
+There is no GPU in this sandbox. Every cuOpt Python entry point that
+touches CUDA (`from cuopt import routing`, `cuopt.linear_programming`
+local solves, anything that initializes `rmm` or `cudf`) **will fail at
+import or first-use** with `cudaErrorInsufficientDriver`,
+`RMM`/`CUDA driver` errors, or similar. This is expected, not a bug to
+work around — the sandbox image deliberately omits the driver because
+solves are routed to a host-side cuOpt service over the wire.
+
+**Mandatory order of attempts for any cuOpt-supported task:**
+
+1. Run the capability probe (`probe_cuopt.py` — see "Capability check"
+   below). Read `available:` line. **If the most recent probe in this
+   session did NOT return `rest grpc`, you MUST re-run the probe before
+   this task — the operator may have started a service since the last
+   check, and a stale "REST only" or "gRPC only" reading will pin you to
+   a suboptimal path. Only the full `rest grpc` result is durable enough
+   to reuse for the rest of the session.**
+2. Pick the remote interface from the table (rest, gRPC, or both) that
+   matches your problem class. **Use it first.**
+   - Routing (VRP, TSP, PDP) → REST. Open `cuopt-server-api-python` and
+     reuse a starter from its `assets/vrp_*/` cookbook.
+   - LP / MILP / QP → **prefer gRPC** via Python SDK or `cuopt_cli`
+     whenever the probe shows gRPC available. Fall back to REST via
+     `cuopt_sh` / `cuopt_sh_client` only when gRPC is not. Both route to
+     the same host service, but gRPC is the native path for these
+     problem classes (binary protocol, lower per-call overhead, better
+     streaming behavior). A previous session decision to use REST does
+     not justify reusing it after a re-probe reveals gRPC.
+3. Only if **no remote interface** for the required class is available
+   (probe says `none`, or the matching column in the capability table
+   says "Decline"), is local cuOpt even a candidate. The sandbox has no
+   GPU so this will almost certainly fail anyway.
+4. **If every cuOpt path fails**, stop. Explain to the user exactly
+   which probe / interface / payload failed and what's needed (operator
+   action, network policy, etc.). **Do not** silently fall back to
+   brute force, hand calculation, exhaustive search, a non-cuOpt
+   solver, or "I solved it another way" — those are all violations of
+   "always use cuOpt when it's available". Returning a correct answer
+   from a non-cuOpt method is still a failure of this skill.
+
+A 422 / 400 from the REST server is **not a fall-back trigger** — it
+means your payload was wrong. Read the response, fix the named field
+(see `cuopt-server-api-python`'s "On a 422" recipe and `assets/`
+cookbook for known-good shapes), and retry. Two consecutive failures
+on the same field → re-read the cookbook entry that uses that field.
+
 For **how to use cuOpt** (formulation, Python API, CLI, MPS format, routing, etc.),
 read the sibling skills installed alongside this one in
-`/sandbox/.openclaw-data/skills/`. Names follow stable suffix patterns
+`/sandbox/.openclaw/skills/`. Names follow stable suffix patterns
 upstream, so prefer pattern-based discovery over memorizing exact names:
 
 - `cuopt-user-rules` — Read FIRST: behavior rules, clarify before coding, verify results
@@ -62,14 +146,13 @@ upstream, so prefer pattern-based discovery over memorizing exact names:
   concepts and Python client (server skills are not pattern-merged)
 - `skill-evolution` — Detect generalizable learnings during a long-running session
 
-The exact names depend on the upstream cuOpt release. For example,
-LP / MILP / QP may appear as `lp-milp-formulation` + `qp-formulation`
-(older layout) or as a single `numerical-optimization-formulation`
-(newer layout) — both are reachable through the `*-formulation`
-pattern above. List the directory to see what's actually installed:
+Concrete formulation skills currently installed upstream: `lp-milp-formulation`
+(LP and MILP concepts) and `qp-formulation` (QP concepts, beta). Both are
+reachable through the `*-formulation` pattern above. List the directory to
+see what's actually installed:
 
 ```bash
-ls -1 /sandbox/.openclaw-data/skills/
+ls -1 /sandbox/.openclaw/skills/
 ```
 
 These are vendored from <https://github.com/NVIDIA/cuopt/tree/main/skills> at
@@ -178,7 +261,7 @@ backend` in the solver output, the remote path engaged. If you see
 the client tried to solve locally — there is no GPU here, so it fails.
 
 For modeling, status checking, and examples → the matching upstream
-skill in `/sandbox/.openclaw-data/skills/` — typically a `cuopt-*-api-python`
+skill in `/sandbox/.openclaw/skills/` — typically a `cuopt-*-api-python`
 skill (LP / MILP / QP), `cuopt-routing-api-python`, or a `cuopt-*-api-cli`
 skill.
 
@@ -201,7 +284,117 @@ cuopt_sh -t LP /path/to/problem.mps -i host.openshell.internal -p 5000
 
 For request shape, polling, and routing examples →
 `cuopt-server-api-python`, `cuopt-server-common`, and `cuopt-routing-api-python`
-in `/sandbox/.openclaw-data/skills/`.
+in `/sandbox/.openclaw/skills/`.
+
+### Vehicle routing (VRP, TSP, PDP) — REST only in this sandbox
+
+Routing **must** go through the REST path. The `cuopt.routing` Python
+module initializes CUDA/RMM at import time and there is no GPU in this
+sandbox, so `from cuopt import routing` fails. This is by design — see
+"Remote-first" above.
+
+Concrete steps:
+
+1. Open `cuopt-server-api-python` and read its "VRP payload cookbook"
+   table.
+2. Pick the cookbook entry whose feature set is closest to the user's
+   data — e.g. `vrp_time_windows/` if the user gave time windows,
+   `vrp_capacities/` for demand+capacity, `vrp_pickup_delivery/` for
+   paired pickups/deliveries. Each entry is at
+   `/sandbox/.openclaw/skills/cuopt-server-api-python/assets/<name>/`
+   and contains a runnable `payload.json`, `README.md`, and `run.sh`.
+3. Adapt the `payload.json` to the user's data, keeping the field
+   shapes intact.
+4. Submit with `cuopt_sh` (CLI, easiest) or `cuopt_sh_client` (Python).
+   Both honor `CUOPT_SERVER` (already set by `.bashrc` to
+   `host.openshell.internal:5000`).
+5. On a 422, follow the cookbook's "On a 422" recipe — read the `loc`
+   path from the response and fix that field. Do not retry blindly;
+   do not bail to brute force.
+
+#### Default routing-data assumptions (do not ask)
+
+When user-supplied routing data is incomplete in any of the ways below,
+apply these defaults silently rather than asking. Symmetric costs and
+zero diagonals are the conventional defaults for VRP/TSP/PDP; asking the
+user to re-state them every time is friction without value.
+
+- **Cost and time matrices are symmetric by default.** If the user
+  provides a cost or time for one direction of a location pair (A→B)
+  but not the reverse (B→A), assume the reverse equals the forward
+  value. Mirror sparse one-direction entries into a full square matrix
+  before submitting the payload.
+- **Diagonal entries are zero.** Cost and time from a location to itself
+  is 0. Do not ask whether to include the diagonal or what its value
+  should be.
+- **Explicit asymmetric values always win.** If the user provides both
+  A→B = 10 and B→A = 12, use both as-is. Symmetry is only the default
+  for *missing* entries; it is never an override for entries the user
+  actually gave.
+
+Only ask for clarification when the gap is genuinely ambiguous in a way
+these defaults can't cover, e.g.:
+
+- No cost or time data of any kind was provided — need a source
+  (user-supplied matrix? straight-line distance from coordinates?
+  haversine on lat/lon? external distance API?).
+- Multi-modal cost (e.g. distance vs travel time vs toll) where the
+  formulation needs one but the user supplied another.
+- Costs/times for some pairs only, with neither direction provided for
+  others — explicitly confirm whether the missing pairs are unreachable
+  or simply unmeasured.
+
+The `cuopt-routing-api-python` skill describes the GPU-backed Python API
+and is **not** the right reference inside this sandbox — use the REST path
+instead.
+
+## Script execution hygiene
+
+For any solver script longer than a one-liner, write it to a file first
+and run that file. Inline heredocs and `python3 -c "..."` strings interact
+badly with the `tool_call → exec → shell → Python` quoting chain — quotes
+collapse across layer boundaries, and each broken inline script costs a
+full sandbox round-trip before the failure is even visible.
+
+Recommended pattern:
+
+```bash
+cat > /sandbox/solve.py <<'PY'
+# … solver code …
+PY
+bash -lc 'source /sandbox/.openclaw-data/cuopt/bin/activate && python3 /sandbox/solve.py'
+```
+
+Use `bash -lc` (not bare `sh`) for any command that calls `source`; the
+default shell behind `tool_call exec` can be `dash`, which doesn't have
+`source`. The same applies to anything that relies on bash-only syntax
+(arrays, `[[ ... ]]`, `<<<`, etc.).
+
+Failure symptoms that mean script construction is broken — **not** cuOpt.
+If you see any of these, stop debugging the solver and switch to the
+file pattern above:
+
+- `source: not found` → wrap with `bash -lc '...'`.
+- `SyntaxError` on a Python line containing an unquoted URL, path, or
+  shell metacharacter → quoting collapsed somewhere across the layers.
+- `NameError` on a token that should obviously be a string literal
+  (e.g. `Path(/sandbox)` missing the quotes around `/sandbox`) → same
+  root cause; the outer layer ate your Python quotes.
+
+If you see `STATUS None` / `OBJECTIVE None` from a solve that otherwise
+ran to completion, that's a **different** failure mode — a response-shape
+mismatch in your parser. Open the matching cookbook entry under
+`/sandbox/.openclaw/skills/cuopt-server-api-python/assets/` and copy its
+extraction code rather than extrapolating from a different problem class:
+
+| Problem class | Cookbook entry | Response shape |
+|---|---|---|
+| LP | `lp_basic/client.py` | `result['response'].get('primal_solution')` — direct |
+| MILP | `milp_basic/client.py` | `result['response'].get('primal_solution')` — direct |
+| Routing (VRP/TSP/PDP) | `vrp_*/client.py` | `result['response']['solver_response']['status']` — nested under `solver_response` |
+
+The LP/MILP and routing shapes are different. Do not assume one based on
+having read the other.
 
 ## Quick connectivity smoke test (LP)
 
@@ -232,6 +425,7 @@ If this fails, do not move on to a real problem — fix connectivity first
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `cudaErrorInsufficientDriver` or CUDA errors | Accidentally invoked local solve instead of remote service | Set `CUOPT_REMOTE_HOST=host.openshell.internal` and `CUOPT_REMOTE_PORT=5001` before solving |
+| `from cuopt import routing` fails with CUDA / RMM init error | There is no GPU in this sandbox; routing has no remote-aware Python wrapper | Use REST instead: see "Vehicle routing (VRP, TSP, PDP) — REST only in this sandbox" above and `cuopt-server-api-python`'s `assets/vrp_*/` cookbook. Do **not** fall back to brute force or non-cuOpt methods |
 | `403 Forbidden` | Wrong address or sandbox policy missing port | Use `host.openshell.internal`, not `localhost`. If address is correct, ask operator to run `nemoclaw_cuopt_setup.sh apply-policy` |
 | `Connection refused` on `:5000` | REST service not running or host firewall blocking the port | Check if REST is needed; gRPC alone (5001) is sufficient for LP/MILP. If REST is needed, ask operator to start it |
 | `available: none` from `probe_cuopt.py` | No cuOpt service running on host, ports not in sandbox policy, or host firewall | Ask operator to start a cuOpt server (`SETUP.md` > Starting the cuOpt server) and re-run `nemoclaw_cuopt_setup.sh apply-policy`; verify host firewall opens 5000 / 5001 |
