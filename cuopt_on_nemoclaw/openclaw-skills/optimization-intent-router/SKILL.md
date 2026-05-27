@@ -167,12 +167,13 @@ Before handing off, produce an internal working conclusion with at least:
 ## Handoff guidance
 
 - If `problem_family = lp | milp`:
-  - hand off to `lp-milp-formulation`
-  - then to `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
+  - hand off to `numerical-optimization-formulation`
+  - then to `cuopt-numerical-optimization-api-python` (or
+    `cuopt-numerical-optimization-api-cli` for MPS inputs)
 
 - If `problem_family = qp`:
-  - hand off to `qp-formulation`
-  - then to `cuopt-qp-api-python`
+  - hand off to `numerical-optimization-formulation`
+  - then to `cuopt-numerical-optimization-api-python`
 
 - If `problem_family = routing`:
   - hand off to `routing-formulation`

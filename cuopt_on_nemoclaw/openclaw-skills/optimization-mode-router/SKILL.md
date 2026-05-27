@@ -117,13 +117,14 @@ Alternative longer form:
 After selecting a mode, hand off based on problem type:
 
 - If the request is LP / MILP:
-  - use `lp-milp-formulation`
-  - then use `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
+  - use `numerical-optimization-formulation`
+  - then use `cuopt-numerical-optimization-api-python` (or
+    `cuopt-numerical-optimization-api-cli` for MPS inputs)
   - in sandbox contexts, follow `cuopt-sandbox` first when required
 
 - If the request is QP:
-  - use `qp-formulation`
-  - then use `cuopt-qp-api-python`
+  - use `numerical-optimization-formulation`
+  - then use `cuopt-numerical-optimization-api-python`
   - in sandbox contexts, follow `cuopt-sandbox` first when required
 
 - If the request is routing (VRP / TSP / PDP):

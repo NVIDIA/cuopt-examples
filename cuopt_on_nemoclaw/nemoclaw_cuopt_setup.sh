@@ -17,24 +17,25 @@
 # NemoClaw cuOpt sandbox setup
 #
 # Subcommands:
-#   add [NAME]             Add cuOpt to a sandbox: policy + install + skill + test.
-#   apply-policy [NAME]    Add cuOpt network policy to a running sandbox.
-#   install [NAME]         Install cuOpt packages in the sandbox venv and stamp
-#                          an auto-activation block into /sandbox/.bashrc.
-#                          If a wheel cache exists at $CUOPT_WHEEL_CACHE matching
-#                          the package set + sandbox python, install offline.
-#   install-bashrc [NAME]  Re-stamp the auto-activation block in /sandbox/.bashrc
-#                          without reinstalling the venv (useful after changing
-#                          CUOPT_HOST, CUOPT_PORT, or CUOPT_VENV).
-#   install-skill [NAME]   Upload the cuOpt skill into the sandbox.
-#   cache-wheels [NAME]    Snapshot a sandbox's already-installed wheels into
-#                          $CUOPT_WHEEL_CACHE. NAME must already have cuOpt
-#                          installed (run `add` or `install` against it
-#                          online once first). Subsequent `install` / `add`
-#                          runs against any sandbox reuse the cache and
-#                          install offline.
-#   clear-wheel-cache      Remove $CUOPT_WHEEL_CACHE.
-#   test [NAME]            Smoke-test PyPI + cuOpt server reachability.
+#   add [NAME]                 Add cuOpt to a sandbox: policy + install + skill + test.
+#   apply-policy [NAME]        Add cuOpt network policy to a running sandbox.
+#   install [NAME]             Install cuOpt packages in the sandbox venv and
+#                              stamp the activation file (see install-activation).
+#                              If a wheel cache exists at $CUOPT_WHEEL_CACHE
+#                              matching the package set + sandbox python,
+#                              install offline.
+#   install-activation [NAME]  Re-stamp the cuOpt venv activation file
+#                              (/sandbox/.bash_profile). Use after changing
+#                              CUOPT_HOST, CUOPT_PORT, or CUOPT_VENV.
+#   install-skill [NAME]       Upload the cuOpt skill into the sandbox.
+#   cache-wheels [NAME]        Snapshot a sandbox's already-installed wheels
+#                              into $CUOPT_WHEEL_CACHE. NAME must already have
+#                              cuOpt installed (run `add` or `install` against
+#                              it online once first). Subsequent `install` /
+#                              `add` runs against any sandbox reuse the cache
+#                              and install offline.
+#   clear-wheel-cache          Remove $CUOPT_WHEEL_CACHE.
+#   test [NAME]                Smoke-test PyPI + cuOpt server reachability.
 #
 # Flags:
 #   -y, --yes       Skip confirmation prompts (for CI/CD).
@@ -61,11 +62,13 @@
 #   CUOPT_SKILLS_REPO  GitHub repo to fetch upstream cuOpt skills from
 #                      (default: NVIDIA/cuopt).
 #   CUOPT_SKILLS_REF   Branch / tag / commit SHA to fetch from CUOPT_SKILLS_REPO
-#                      (default: main).
+#                      (default: release/26.06 — the cuOpt release line this
+#                      script was last verified against; override to `main`
+#                      to pull the latest in-progress skills).
 #   CUOPT_SKILLS_SKIP  Comma-separated glob patterns matching upstream skill
 #                      names to NOT install (default:
-#                      *installation*,*developer*,*-api-c).
-#                      *installation* — host-side install flows; cuOpt is
+#                      cuopt-install,*developer*,*-api-c).
+#                      cuopt-install  — host-side install flows; cuOpt is
 #                          already installed in the sandbox.
 #                      *developer*    — for contributing to the cuOpt
 #                          codebase; agents use cuOpt, they don't build it.
@@ -117,13 +120,13 @@ CUOPT_PYTHON_BIN="${CUOPT_PYTHON_BIN:-}"
 CUOPT_HOST_IP="${CUOPT_HOST_IP:-}"
 CUOPT_SKILLS_REPO="${CUOPT_SKILLS_REPO:-NVIDIA/cuopt}"
 # Skill set last verified end-to-end with this script. Keep this pinned to
-# a tag or commit SHA so users get a reproducible vendoring even when
-# upstream main moves. Update deliberately, alongside the version banner
-# constants above, when a newer cuOpt skill release is verified. Override
-# at runtime with CUOPT_SKILLS_REF=<ref>.
-TESTED_CUOPT_SKILLS_REF="main"
+# a release branch, tag, or commit SHA so users get a stable vendoring
+# even when upstream main moves. Update deliberately, alongside the
+# version banner constants above, when a newer cuOpt skill release is
+# verified. Override at runtime with CUOPT_SKILLS_REF=<ref>.
+TESTED_CUOPT_SKILLS_REF="release/26.06"
 CUOPT_SKILLS_REF="${CUOPT_SKILLS_REF:-${TESTED_CUOPT_SKILLS_REF}}"
-CUOPT_SKILLS_SKIP="${CUOPT_SKILLS_SKIP:-*installation*,*developer*,*-api-c}"
+CUOPT_SKILLS_SKIP="${CUOPT_SKILLS_SKIP:-cuopt-install,*developer*,*-api-c}"
 
 # ── pip-package set (single source of truth) ─────────────────────
 # Pinned packages installed by cmd_install AND fetched by cmd_cache_wheels.
@@ -150,6 +153,19 @@ CUOPT_WHEEL_CACHE="${CUOPT_WHEEL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cuopt-wh
 CUOPT_SANDBOX_WHEEL_DIR="/sandbox/.openclaw-data/wheels"
 
 FORCE=false
+
+# ── cmd_test status (populated by cmd_test, read by print_service_status_summary) ─
+# Tracks what the smoke test observed so cmd_add can show a compact
+# post-test summary when something didn't pass. Values:
+#   CUOPT_TEST_HOST_REST     "up" | "down"            (is the host process listening?)
+#   CUOPT_TEST_HOST_GRPC     "up" | "down"
+#   CUOPT_TEST_SANDBOX_REST  "ok" | "unreachable" | "n/a"  ("n/a" when host is down)
+#   CUOPT_TEST_SANDBOX_GRPC  "ok" | "unreachable" | "n/a"
+# Initial empty value means cmd_test hasn't run yet in this invocation.
+CUOPT_TEST_HOST_REST=""
+CUOPT_TEST_HOST_GRPC=""
+CUOPT_TEST_SANDBOX_REST=""
+CUOPT_TEST_SANDBOX_GRPC=""
 
 # ── Tested NemoClaw / OpenShell versions ──────────────────────────
 # The versions this script was last verified against. Bumped when we test
@@ -244,6 +260,117 @@ check_versions() {
     echo "└─────────────────────────────────────────────────────────────────────┘"
     echo ""
   } >&2
+}
+
+# ── Sandbox container helpers ─────────────────────────────────────
+# Post-2026.05 NemoClaw runs each sandbox as a top-level docker container
+# named `openshell-<sandbox>-<uuid>`. The previous architecture nested a
+# kubectl-in-the-cluster behind `openshell-cluster-nemoclaw`; that gateway
+# container is gone, so the old `docker exec gateway kubectl exec sandbox
+# …` paths fail fast with "No such container". We talk to the sandbox
+# container directly.
+#
+# These helpers replace the previous gateway-kubectl plumbing AND avoid
+# `openshell sandbox exec`, which hangs intermittently in current builds
+# (see earlier diagnostic — bare `openshell sandbox exec --no-tty -- …`
+# blocked indefinitely against the same sandbox where `docker exec`
+# returns in <1s).
+#
+# find_sandbox_container <sandbox-name>
+#   Prints the container name. Returns:
+#     0  match found
+#     1  no matching container (sandbox not running)
+#     2  docker not available on host
+
+find_sandbox_container() {
+  local sandbox="$1"
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "error: docker not found on host" >&2
+    return 2
+  fi
+  local c
+  c=$(docker ps --filter "name=openshell-${sandbox}-" --format '{{.Names}}' | head -1)
+  if [[ -z "$c" ]]; then
+    echo "error: no running sandbox container matches 'openshell-${sandbox}-*'" >&2
+    echo "  docker ps shows:" >&2
+    docker ps --format '    {{.Names}}\t{{.Status}}' >&2
+    return 1
+  fi
+  printf '%s\n' "$c"
+}
+
+# sandbox_exec <sandbox-name> <cmd> [args…]
+#   Run a command inside the sandbox container as the sandbox user. The
+#   container's image USER is `sandbox`, but we set -u sandbox explicitly
+#   so a future image-USER change can't silently land us as root.
+#
+#   We also set HOME=/sandbox to match the sandbox user's passwd entry
+#   (sandbox:x:998:998::/sandbox:/bin/bash). `docker exec` does NOT
+#   re-resolve HOME from passwd when -u changes the user — it keeps
+#   whatever HOME the container entrypoint inherited (typically /root).
+#   That breaks any tool that uses ~ to locate caches/config: pip looks
+#   for its HTTP cache under ~/.cache/pip (warm cache lives at
+#   /sandbox/.cache/pip), git looks for ~/.gitconfig, etc. The earlier
+#   `kubectl exec` path got the right HOME for free because kubectl
+#   honors the pod user's passwd entry.
+#
+#   Stderr is passed through verbatim — callers that want it quiet
+#   should redirect themselves. Returns the inner command's exit code,
+#   or whatever find_sandbox_container returned if the container isn't
+#   running.
+sandbox_exec() {
+  local sandbox="$1"; shift
+  local container
+  container=$(find_sandbox_container "$sandbox") || return $?
+  docker exec -u sandbox -e HOME=/sandbox "$container" "$@"
+}
+
+# sandbox_exec_root <sandbox-name> <cmd> [args…]
+#   Same as sandbox_exec, but as root inside the container. Use only for
+#   writes the sandbox user can't perform (e.g. /usr/local/lib/...).
+#   HOME is left at the container default (/root), which matches what
+#   root would see anywhere else.
+sandbox_exec_root() {
+  local sandbox="$1"; shift
+  local container
+  container=$(find_sandbox_container "$sandbox") || return $?
+  docker exec -u root "$container" "$@"
+}
+
+# upload_wheel_cache <sandbox-name> <host-cache-dir> <sandbox-dest-dir>
+#   Copy the CONTENTS of <host-cache-dir> into <sandbox-dest-dir>, flat
+#   (no wrapping directory). Replaces `openshell sandbox upload`, which
+#   in current builds always preserves the source basename and would
+#   land everything one level too deep — pip's --find-links is
+#   non-recursive, so the install then errors with "No matching
+#   distribution found". The tar-pipe approach gives us byte-exact
+#   control of the destination layout. Returns 0 on success, non-zero
+#   on any step's failure.
+upload_wheel_cache() {
+  local sandbox="$1" host_dir="$2" dest_dir="$3"
+  if [[ ! -d "$host_dir" ]]; then
+    echo "  error: wheel cache source dir does not exist: $host_dir" >&2
+    return 1
+  fi
+  local container
+  container=$(find_sandbox_container "$sandbox") || return $?
+  # mkdir -p the destination (idempotent; safe even if a prior install
+  # already left files there — tar will overwrite same-named entries).
+  if ! docker exec -u sandbox -e HOME=/sandbox "$container" \
+         mkdir -p "$dest_dir" 2>&1; then
+    echo "  error: could not mkdir $dest_dir in sandbox" >&2
+    return 1
+  fi
+  # Tar the *contents* of host_dir (-C ... .) so the destination layout
+  # is flat. `-i` (--ignore-zeros) on the receiving end is unnecessary;
+  # default tar handles a single stream cleanly.
+  if ! tar -C "$host_dir" -cf - . \
+       | docker exec -i -u sandbox -e HOME=/sandbox "$container" \
+           tar -C "$dest_dir" -xf -; then
+    echo "  error: tar-pipe into sandbox failed" >&2
+    return 1
+  fi
+  return 0
 }
 
 # ── Locate NemoClaw package root ─────────────────────────────────
@@ -509,6 +636,91 @@ print_ufw_unknown_hint() {
   echo ""
 }
 
+# ── Activation banner ─────────────────────────────────────────────
+# Short, boxed reminder of how to pick up the venv after
+# `nemoclaw connect`. Uses the same boxed style as the firewall warnings
+# so it stands out from the install/upload chatter that comes before it.
+# Why this exists: NemoClaw seals /sandbox/.bashrc, so cuOpt activation
+# lives in /sandbox/.bash_profile — which non-login interactive bash
+# (what `nemoclaw connect` spawns) does not source. Users have to take
+# one explicit step after connecting.
+print_activation_banner() {
+  local sandbox="$1"
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════════╗"
+  echo "║  cuOpt venv activation                                           ║"
+  echo "╚══════════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  After:"
+  echo "      nemoclaw ${sandbox} connect"
+  echo ""
+  echo "  Run ONE of these inside the sandbox shell to activate the venv,"
+  echo "  set CUOPT_SERVER, and define the cuopt_sh alias:"
+  echo ""
+  echo "      source /sandbox/.bash_profile      # activate the current shell"
+  echo "      exec bash -l                       # replace with a login shell"
+  echo ""
+  echo "  (NemoClaw seals /sandbox/.bashrc, so cuOpt activation lives in"
+  echo "  .bash_profile, which non-login interactive shells don't source.)"
+  echo ""
+  echo "══════════════════════════════════════════════════════════════════════"
+  echo ""
+}
+
+# ── Service status summary (post-test) ────────────────────────────
+# Render a compact, boxed summary of what cmd_test observed. Called by
+# cmd_add only when cmd_test returned non-zero, so the user sees the
+# big picture at the bottom of the scrollback right after the
+# activation banner — and doesn't have to scroll up through pip output
+# to figure out which leg failed.
+#
+# Reads the CUOPT_TEST_* globals populated by cmd_test:
+#   CUOPT_TEST_HOST_REST     "up" | "down"
+#   CUOPT_TEST_HOST_GRPC     "up" | "down"
+#   CUOPT_TEST_SANDBOX_REST  "ok" | "unreachable" | "n/a"
+#   CUOPT_TEST_SANDBOX_GRPC  "ok" | "unreachable" | "n/a"
+print_service_status_summary() {
+  local sandbox="$1"
+  local test_rc="${2:-1}"
+  # Use ASCII hyphen rather than em-dash here: printf "%-64s" measures
+  # bytes, but the em-dash is 3 bytes wide / 1 visual column, which would
+  # pull the right-hand "║" two columns left of the box border.
+  local header
+  case "$test_rc" in
+    2) header="Service status - NO cuOpt SERVER RUNNING" ;;
+    *) header="Service status - TEST FAILED" ;;
+  esac
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════════╗"
+  printf "║  %-64s║\n" "$header"
+  echo "╚══════════════════════════════════════════════════════════════════╝"
+  echo ""
+  printf "  Host process listening    REST: %-12s  gRPC: %-12s\n" \
+    "${CUOPT_TEST_HOST_REST:-?}" "${CUOPT_TEST_HOST_GRPC:-?}"
+  printf "  Sandbox -> host reach     REST: %-12s  gRPC: %-12s\n" \
+    "${CUOPT_TEST_SANDBOX_REST:-?}" "${CUOPT_TEST_SANDBOX_GRPC:-?}"
+  echo ""
+
+  if [[ "$test_rc" -eq 2 ]]; then
+    echo "  No cuOpt service is listening on the host. Start one, then retry:"
+    echo "      ./nemoclaw_cuopt_setup.sh test ${sandbox}"
+    echo "  See cuopt-examples/cuopt_on_nemoclaw/SETUP.md > Starting the"
+    echo "  cuOpt server for the supported launch commands."
+  else
+    echo "  Common causes for 'unreachable' on a listening service:"
+    echo "    - UFW blocks the docker bridge -> host (see firewall hints above)"
+    echo "    - cuOpt server bound to 127.0.0.1 only, not 0.0.0.0"
+    echo "    - Sandbox network policy missing the port"
+    echo "      (re-apply with: ./nemoclaw_cuopt_setup.sh apply-policy ${sandbox})"
+    echo ""
+    echo "  Retry after fixing:"
+    echo "      ./nemoclaw_cuopt_setup.sh test ${sandbox}"
+  fi
+  echo ""
+  echo "══════════════════════════════════════════════════════════════════════"
+  echo ""
+}
+
 # ── Python binary enumeration for policy ─────────────────────────
 # OpenShell enforces literal binary path matching, so we enumerate every
 # Python interpreter the sandbox might end up using: the unversioned
@@ -675,29 +887,34 @@ wheel_cache_present() {
 # (i.e. you've already run `add` or `install` against it once, online).
 # Subsequent fresh sandboxes will reuse this cache and install offline.
 #
-# Implementation note: we go through the gateway container's kubectl
-# (same path install_bashrc_activation uses) instead of `openshell
-# sandbox exec` / `download`, because the latter hang in current
-# nemoclaw builds while the kubectl path returns in <1s. Tar-piped
-# extraction sidesteps `kubectl cp` (which silently no-ops via
-# `docker exec`).
+# Implementation note: we exec directly into the sandbox container via
+# `docker exec -u sandbox` (see find_sandbox_container / sandbox_exec
+# helpers near the top of this file) instead of `openshell sandbox exec`
+# / `download`, because the latter hang in current nemoclaw builds while
+# the docker-exec path returns in <1s. Tar-piped extraction sidesteps
+# `kubectl cp` and `openshell sandbox download` (both silently misbehave
+# in current builds — kubectl cp no-ops when called via docker exec, and
+# openshell download has the same hang as exec).
 cmd_cache_wheels() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
   local cache_dir; cache_dir="$(wheel_cache_dir)"
   local sandbox_venv="/sandbox/${CUOPT_VENV}"
   local sandbox_stage="/sandbox/.openclaw-data/wheels-snapshot"
-  local gw="${GATEWAY_CONTAINER:-openshell-cluster-nemoclaw}"
-  local ns="${K8S_NAMESPACE:-openshell}"
 
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "error: docker not found on host — gateway-container kubectl path required" >&2
-    exit 2
-  fi
+  # Find the container once and close over it — saves a `docker ps` on
+  # every invocation and fails fast if the sandbox isn't running.
+  local container
+  container=$(find_sandbox_container "$sandbox") || exit 2
 
-  # Helper: run a command in the sandbox via gateway kubectl. Quiets the
-  # 'Defaulted container "agent"' chatter that kubectl exec writes to stderr.
+  # Local helper: run a command inside the sandbox container as the
+  # sandbox user. Mirrors the shared sandbox_exec helper, including the
+  # HOME=/sandbox fix-up. Without HOME=/sandbox, pip's cache lookup
+  # resolves ~/.cache/pip to the container default /root/.cache/pip
+  # (root-owned, unwritable from the sandbox user), so the cache
+  # silently disables and `pip download` re-fetches everything from
+  # PyPI — ~30 min instead of seconds.
   _sb_exec() {
-    docker exec "$gw" kubectl exec -n "$ns" "$sandbox" -- "$@" 2> >(grep -v '^Defaulted container ' >&2)
+    docker exec -u sandbox -e HOME=/sandbox "$container" "$@"
   }
 
   echo "Snapshotting cuOpt wheels from sandbox '$sandbox':"
@@ -722,15 +939,13 @@ EOF
   #    pip's HTTP cache (already populated during the prior install, so
   #    this step usually uses no network).
   echo "  Step 1/3: freezing sandbox venv and downloading exact-version wheels ..."
-  # Run pip download AS the sandbox user (uid 998), not as root. Two reasons:
-  #   1. The original install populated pip's HTTP cache at /tmp/.cache/pip
-  #      owned by uid 998. Running as root sees a non-writable cache, pip
-  #      "disables" it, and re-downloads everything from PyPI (~30 min on
-  #      slow links). Running as sandbox uses the warm cache (seconds).
-  #   2. With --cache-dir disabled, pip's `save_linked_requirement` step
-  #      occasionally hits FileNotFoundError on the last copy (no idea why,
-  #      cache-disabled mode is poorly tested). Going through the cache
-  #      path avoids that whole code branch.
+  # _sb_exec already runs as the sandbox user (-u sandbox on docker exec).
+  # This matters because the original install populated pip's HTTP cache at
+  # /tmp/.cache/pip owned by uid 998 — running as root would see a
+  # non-writable cache, pip would "disable" it, and we'd re-download
+  # everything from PyPI (~30 min on slow links). It also avoids pip's
+  # cache-disabled save_linked_requirement code path, which occasionally
+  # hits FileNotFoundError on the final copy.
   local inner_script
   inner_script=$(cat <<INNER
 set -e
@@ -752,15 +967,15 @@ sz=\$(du -sh '$sandbox_stage' 2>/dev/null | cut -f1)
 echo "    downloaded \$n_whl wheels (\$sz) to $sandbox_stage"
 INNER
   )
-  if ! _sb_exec runuser -u sandbox -- bash -c "$inner_script"; then
+  if ! _sb_exec bash -c "$inner_script"; then
     echo "" >&2
     echo "error: in-sandbox pip download failed. Stage dir: $sandbox_stage" >&2
     exit 1
   fi
 
-  # 3. Tar-pipe out to host cache. kubectl cp is silently broken when run
-  #    via docker exec (returns 0, copies nothing); a tar pipe through
-  #    kubectl exec is the documented k8s alternative and works reliably.
+  # 3. Tar-pipe out to host cache. `openshell sandbox download` hangs in
+  #    current builds, and tarring through docker exec keeps the snapshot
+  #    atomic (no intermediate kubectl/openshell layer to lose bytes).
   echo "  Step 2/3: tar-piping snapshot to host cache ..."
   rm -rf "$cache_dir"
   mkdir -p "$cache_dir"
@@ -826,8 +1041,9 @@ cmd_install() {
   # We install cuopt-cu13 even though execution is remote: the agent builds
   # problems with the cuopt Python API, which has to import cuopt.* — those
   # imports require the package to be installed locally. The CUOPT_SERVER
-  # env var (set in install_bashrc_activation) routes the actual solve to
-  # the remote server, so CUDA never gets loaded in the sandbox. cu13 is
+  # env var (written by install_activation into .bash_profile) routes
+  # the actual solve to the remote server, so CUDA never gets loaded in the
+  # sandbox. cu13 is
   # used because the host driver is CUDA 13.x; switch to cuopt-cu12 by
   # editing this line if your host driver is CUDA 12.x.
 
@@ -841,7 +1057,16 @@ cmd_install() {
     local cache_dir; cache_dir="$(wheel_cache_dir)"
     local n; n="$(ls -1 "$cache_dir"/*.whl 2>/dev/null | wc -l)"
     echo "  Wheel cache hit ($n wheels in $cache_dir); uploading and installing offline."
-    if ! openshell sandbox upload "$sandbox" "$cache_dir/" "$CUOPT_SANDBOX_WHEEL_DIR" 2>&1; then
+    # Why tar-pipe via docker exec instead of `openshell sandbox upload`?
+    # Current openshell upload semantics preserve the source directory
+    # name: `upload <host>/cache/<hash>/ <sandbox>/wheels` lands the
+    # wheels at <sandbox>/wheels/<hash>/*.whl (one level too deep), and
+    # pip's --find-links is non-recursive so the install fails with
+    # "No matching distribution". Same gotcha that hit the skill upload
+    # path. A tar-pipe gives us byte-level control of the layout: we
+    # land the .whl files flat under $CUOPT_SANDBOX_WHEEL_DIR/ so the
+    # existing --find-links path keeps working unchanged.
+    if ! upload_wheel_cache "$sandbox" "$cache_dir" "$CUOPT_SANDBOX_WHEEL_DIR"; then
       echo "  warning: wheel cache upload failed; falling back to online install" >&2
       pip_install_line="pip install $CUOPT_PIP_PACKAGES --extra-index-url=$CUOPT_PIP_EXTRA_INDEX"
     else
@@ -867,87 +1092,122 @@ cmd_install() {
   local cuopt_ip="host.openshell.internal"
   [[ -n "$CUOPT_HOST" ]] && cuopt_ip="$CUOPT_HOST"
 
-  if install_bashrc_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"; then
-    cat <<EOF
-Install complete. Auto-activation is installed in /sandbox/.bashrc
-(mode 0444, Landlock read-only). Reconnect with:
-
-    nemoclaw ${sandbox} connect
-
-The venv, CUOPT_SERVER, and cuopt_sh alias will be active in every shell.
-EOF
+  if install_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"; then
+    echo "Install complete."
   else
     cat <<EOF
-Install complete, but auto-activation could not be installed in
-/sandbox/.bashrc (see warning above). Activate manually per session:
+Install complete, but auto-activation could NOT be installed in
+/sandbox/.bash_profile (see warning above). Activate manually per session:
 
-    nemoclaw ${sandbox} connect
+    nemoclaw connect ${sandbox}
     source ${venv}/bin/activate
     export CUOPT_SERVER=${cuopt_ip}:${CUOPT_PORT}
 EOF
   fi
 }
 
-# ── install-bashrc ────────────────────────────────────────────────
-# Re-stamp /sandbox/.bashrc with the current CUOPT_VENV / CUOPT_HOST / CUOPT_PORT
-# values without touching the venv. Useful after changing the cuOpt server.
-cmd_install_bashrc() {
+# ── install-activation ────────────────────────────────────────────
+# Re-stamp /sandbox/.bash_profile with the current CUOPT_VENV / CUOPT_HOST /
+# CUOPT_PORT values without touching the venv. Useful after changing the
+# cuOpt server.
+cmd_install_activation() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
   local cuopt_ip="host.openshell.internal"
   [[ -n "$CUOPT_HOST" ]] && cuopt_ip="$CUOPT_HOST"
-  install_bashrc_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"
+  if install_activation "$sandbox" "$cuopt_ip" "$CUOPT_PORT"; then
+    print_activation_banner "$sandbox"
+  fi
 }
 
-# ── install_bashrc_activation (helper) ────────────────────────────
-# Drop a managed auto-activation block into /sandbox/.bashrc as root via the
-# gateway container, the same escape hatch cmd_install_skill already uses for
-# the cuopt-setup guardrail. The default NemoClaw filesystem policy marks
-# /sandbox as Landlock read-only, so a file written here can be sourced by the
-# sandbox user's shell but cannot be modified by the agent. The kubectl-exec'd
-# root process is NOT in the user's Landlock process tree so it can write.
+# ── install_activation (helper) ───────────────────────────────────
+# Drop a managed auto-activation block into /sandbox/.bash_profile by
+# `docker exec`ing directly into the sandbox container.
+#
+# Why .bash_profile and not .bashrc?
+#   NemoClaw bakes /sandbox/.bashrc and /sandbox/.profile as root-owned mode
+#   444 (see nemoclaw Dockerfile.base lines 136-145, "Ref: #2181 — the file
+#   must not be writable by the sandbox user") AND enforces the same lock
+#   under Landlock (see e2e-cloud-experimental/checks/04-landlock-readonly.sh
+#   check 2, which asserts BASHRC_BLOCKED). Even root processes can't write
+#   to .bashrc/.profile at runtime. Bash's startup-file search order means
+#   /sandbox/.bash_profile, when it exists, wins over /sandbox/.profile for
+#   login shells (bash -l, bash -lc). Non-login interactive bash (what
+#   `openshell sandbox connect` / `nemoclaw connect` spawn) and non-login
+#   non-interactive bash (`bash -c '…'`) do NOT source .bash_profile — the
+#   user / agent must run `source /sandbox/.bash_profile`, `exec bash -l`,
+#   or `bash -lc '…'` to get the venv. The sandbox SKILL.md spells this out
+#   for the agent.
+#
+# /sandbox itself is writable (Landlock check 1) for new files, so creating
+# .bash_profile works as the sandbox user. We don't need root, and we don't
+# need to chmod anything.
+#
+# Why docker exec and not the old `docker exec gateway kubectl exec sandbox`
+# path?
+#   Latest NemoClaw (post-2026.05) no longer ships an
+#   `openshell-cluster-nemoclaw` gateway container; the sandbox pod runs
+#   directly as a top-level docker container named `openshell-<sandbox>-
+#   <uuid>`. The old gateway-kubectl path fails fast ("No such container"),
+#   silently swallowed by the previous helper, leaving the user with a
+#   surprising "auto-activation could not be installed" warning. We now
+#   find the container by name pattern and exec into it as the sandbox
+#   user. If a future NemoClaw revives the gateway architecture, gate the
+#   container lookup on a fallback chain.
 #
 # The block is delimited by stable begin/end markers so re-stamping is exact
 # (no fragile partial-line matching).
 #
-# Returns 0 on success, 1 if docker/gateway is unavailable.
-install_bashrc_activation() {
+# Returns 0 on success, 1 if docker/container is unavailable or the inner
+# write fails.
+install_activation() {
   local sandbox="$1"
   local cuopt_ip="$2"
   local cuopt_port="$3"
   local venv="/sandbox/${CUOPT_VENV}"
-  local gw="${GATEWAY_CONTAINER:-openshell-cluster-nemoclaw}"
-  local ns="${K8S_NAMESPACE:-openshell}"
 
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "  warning: docker not found on host — cannot install /sandbox/.bashrc" >&2
+  local container
+  if ! container=$(find_sandbox_container "$sandbox"); then
+    echo "  warning: cannot install /sandbox/.bash_profile (sandbox container not running)" >&2
     return 1
   fi
 
-  # The inner script runs as root inside the sandbox pod via kubectl exec.
-  # Base64 over the whole payload so we don't have to fight three layers of
-  # shell quoting (bash here-doc -> docker exec -> kubectl exec -- sh -c).
-  # Variables we want expanded NOW (outer bash): ${venv}, ${cuopt_ip},
-  # ${cuopt_port}. Variables we want expanded by the inner sh: escaped with \$.
+  # The inner script runs inside the sandbox container as the sandbox user
+  # via sandbox_exec. Base64 over the whole payload so we don't have to
+  # fight three layers of shell quoting (bash here-doc -> docker exec ->
+  # sh -c). Variables we want expanded NOW (outer bash): ${venv},
+  # ${cuopt_ip}, ${cuopt_port}. Variables we want expanded by the inner
+  # sh: escaped with \$.
   local inner_script
   inner_script=$(cat <<INNER_EOF
 set -eu
-bashrc=/sandbox/.bashrc
+profile=/sandbox/.bash_profile
 begin='# >>> cuopt activation (managed by nemoclaw_cuopt_setup.sh) >>>'
 end='# <<< cuopt activation <<<'
 
-[ -f "\$bashrc" ] || : > "\$bashrc"
-chmod 0644 "\$bashrc"
+# First-time setup: create .bash_profile that re-sources the NemoClaw-sealed
+# .profile (so the runtime proxy env hook still fires for login shells, just
+# like it would have if .bash_profile didn't exist and bash had fallen back
+# to .profile). On subsequent runs we leave the existing header alone and
+# only re-stamp the managed block.
+if [ ! -f "\$profile" ]; then
+  cat > "\$profile" <<HEAD_EOF
+# Login shell init for the sandbox user. NemoClaw seals /sandbox/.bashrc
+# and /sandbox/.profile, so cuOpt auto-activation lives here instead.
+# Managed by nemoclaw_cuopt_setup.sh — see cuopt-examples/cuopt_on_nemoclaw.
+[ -f /sandbox/.profile ] && . /sandbox/.profile
+HEAD_EOF
+fi
 
 # Idempotent re-stamp: strip any previous block between the markers.
-if grep -qF "\$begin" "\$bashrc" 2>/dev/null; then
-  b=\$(grep -nF "\$begin" "\$bashrc" | head -1 | cut -d: -f1)
-  e=\$(grep -nF "\$end"   "\$bashrc" | head -1 | cut -d: -f1)
+if grep -qF "\$begin" "\$profile" 2>/dev/null; then
+  b=\$(grep -nF "\$begin" "\$profile" | head -1 | cut -d: -f1)
+  e=\$(grep -nF "\$end"   "\$profile" | head -1 | cut -d: -f1)
   if [ -n "\$b" ] && [ -n "\$e" ] && [ "\$e" -ge "\$b" ]; then
-    sed -i "\${b},\${e}d" "\$bashrc"
+    sed -i "\${b},\${e}d" "\$profile"
   fi
 fi
 
-cat >> "\$bashrc" <<BASHRC_EOF
+cat >> "\$profile" <<BASHPROFILE_EOF
 \$begin
 if [ -f ${venv}/bin/activate ]; then
   . ${venv}/bin/activate
@@ -955,27 +1215,31 @@ if [ -f ${venv}/bin/activate ]; then
   alias cuopt_sh='cuopt_sh -i ${cuopt_ip} -p ${cuopt_port}'
 fi
 \$end
-BASHRC_EOF
-
-# sed -i and 'cat > file' (for a freshly-created file) end up as root:root.
-# Restore the NemoClaw default (sandbox:sandbox) so 'ls -l' looks normal.
-chown sandbox:sandbox "\$bashrc" 2>/dev/null || true
-chmod 0444 "\$bashrc"
+BASHPROFILE_EOF
 INNER_EOF
 )
 
   local inner_b64
   inner_b64=$(printf '%s' "$inner_script" | base64 -w 0)
 
-  if docker exec "$gw" kubectl exec -n "$ns" "$sandbox" -- \
-       sh -c "echo '$inner_b64' | base64 -d | sh" >/dev/null 2>&1; then
-    echo "  Installed cuOpt auto-activation in /sandbox/.bashrc (mode 0444, Landlock read-only)"
+  # Capture stderr so a failed inner write produces a useful diagnostic
+  # instead of a silent retry-warn loop. Don't swallow it the way the
+  # previous helper did.
+  local err_log
+  err_log=$(mktemp)
+  if sandbox_exec "$sandbox" \
+       sh -c "echo '$inner_b64' | base64 -d | sh" >/dev/null 2>"$err_log"; then
+    rm -f "$err_log"
+    echo "  Installed cuOpt auto-activation in /sandbox/.bash_profile"
     return 0
   fi
 
-  echo "  warning: could not install /sandbox/.bashrc via gateway" >&2
-  echo "    gateway container: $gw   sandbox namespace: $ns" >&2
-  echo "    override with GATEWAY_CONTAINER=... / K8S_NAMESPACE=..." >&2
+  echo "  warning: could not write /sandbox/.bash_profile in container '$container'" >&2
+  if [[ -s "$err_log" ]]; then
+    echo "  stderr from the inner write:" >&2
+    sed 's/^/    /' "$err_log" >&2
+  fi
+  rm -f "$err_log"
   return 1
 }
 
@@ -1000,6 +1264,12 @@ cmd_test() {
     has_rest=true
   fi
 
+  # Record status for the post-test summary (read by print_service_status_summary).
+  CUOPT_TEST_HOST_REST=$([[ "$has_rest" == true ]] && echo "up" || echo "down")
+  CUOPT_TEST_HOST_GRPC=$([[ "$has_grpc" == true ]] && echo "up" || echo "down")
+  CUOPT_TEST_SANDBOX_REST="n/a"
+  CUOPT_TEST_SANDBOX_GRPC="n/a"
+
   if [[ "$has_grpc" == false && "$has_rest" == false ]]; then
     echo ""
     echo "No cuOpt server detected on the host."
@@ -1007,7 +1277,7 @@ cmd_test() {
     echo "  - Nothing listening on port ${CUOPT_GRPC_PORT} (gRPC)"
     echo "  Start a cuOpt server first, then re-run: $0 test ${sandbox}"
     echo ""
-    return 1
+    return 2
   fi
 
   echo "Host services: REST=$(if $has_rest; then echo UP; else echo DOWN; fi)  gRPC=$(if $has_grpc; then echo UP; else echo DOWN; fi)"
@@ -1046,13 +1316,21 @@ exit
   # service was actually listening on the host — there's no point hinting
   # about a port we never expected to be reachable.
   local rest_unreachable=false grpc_unreachable=false
-  if [[ "$has_rest" == true ]] \
-     && grep -qE '^rest:[[:space:]]+unreachable' "$probe_log"; then
-    rest_unreachable=true
+  if [[ "$has_rest" == true ]]; then
+    if grep -qE '^rest:[[:space:]]+unreachable' "$probe_log"; then
+      rest_unreachable=true
+      CUOPT_TEST_SANDBOX_REST="unreachable"
+    else
+      CUOPT_TEST_SANDBOX_REST="ok"
+    fi
   fi
-  if [[ "$has_grpc" == true ]] \
-     && grep -qE '^grpc:[[:space:]]+unreachable' "$probe_log"; then
-    grpc_unreachable=true
+  if [[ "$has_grpc" == true ]]; then
+    if grep -qE '^grpc:[[:space:]]+unreachable' "$probe_log"; then
+      grpc_unreachable=true
+      CUOPT_TEST_SANDBOX_GRPC="unreachable"
+    else
+      CUOPT_TEST_SANDBOX_GRPC="ok"
+    fi
   fi
   rm -f "$probe_log"
 
@@ -1084,6 +1362,14 @@ exit
       echo ""
     fi
   fi
+
+  # Return 1 if any host-listening service was unreachable from inside the
+  # sandbox, 0 otherwise. cmd_add reads this to decide whether to print
+  # print_service_status_summary after the activation banner.
+  if [[ "$rest_unreachable" == true || "$grpc_unreachable" == true ]]; then
+    return 1
+  fi
+  return 0
 }
 
 # ── Upstream skills fetch ─────────────────────────────────────────
@@ -1119,7 +1405,7 @@ fetch_upstream_skills() {
 }
 
 # Returns 0 if $1 matches any comma-separated glob in $CUOPT_SKILLS_SKIP.
-# Glob is bash extglob-free; '*' and '?' work as expected (e.g. *installation*).
+# Glob is bash extglob-free; '*' and '?' work as expected (e.g. *developer*).
 skill_is_skipped() {
   local name="$1"
   local raw="$CUOPT_SKILLS_SKIP"
@@ -1232,10 +1518,13 @@ cmd_install_skill() {
 
     # Validate SKIP patterns. A glob in CUOPT_SKILLS_SKIP that matches no
     # upstream name almost always means upstream renamed/removed the
-    # category the pattern targeted (e.g. *installation* before/after a
-    # skill consolidation). We surface this so the operator can update
-    # the SKIP list rather than silently shipping skills they intended
-    # to filter out.
+    # category the pattern targeted (e.g. when LP/MILP/QP skills were
+    # consolidated into a single cuopt-numerical-optimization-api-* set,
+    # the prior `*-api-c` pattern still matched but `*installation*`
+    # stopped matching anything because installation skills had been
+    # merged into a single `cuopt-install`). We surface this so the
+    # operator can update the SKIP list rather than silently shipping
+    # skills they intended to filter out.
     if [[ -n "$CUOPT_SKILLS_SKIP" && ${#upstream_names_all[@]} -gt 0 ]]; then
       local skip_save_ifs="$IFS"
       IFS=','
@@ -1267,10 +1556,9 @@ cmd_install_skill() {
   # gets ~-compacted. The guardrail tells the agent where to find the real skill
   # if the ~-based path fails.
   #
-  # Best-effort — if docker exec is unavailable the managed skill still works
-  # whenever ~ resolves correctly.
-  local gw="${GATEWAY_CONTAINER:-openshell-cluster-nemoclaw}"
-  local ns="${K8S_NAMESPACE:-openshell}"
+  # Best-effort — if docker isn't available, or the sandbox container
+  # isn't running, we skip the bundled-skills write and rely on the
+  # absolute-path skill at /sandbox/.openclaw/skills/cuopt-sandbox.
   local bundled_dir="/usr/local/lib/node_modules/openclaw/skills/cuopt-setup"
 
   local guardrail_content
@@ -1289,8 +1577,9 @@ installed at an absolute path that always works:
 
 Read that file FIRST for sandbox-specific cuOpt setup, then consult the
 per-task sibling skills it points at (cuopt-user-rules,
-cuopt-lp-milp-api-python, cuopt-routing-api-python, lp-milp-formulation,
-etc.) which live in the same `/sandbox/.openclaw/skills/` directory.
+cuopt-numerical-optimization-api-python, cuopt-routing-api-python,
+numerical-optimization-formulation, etc.) which live in the same
+`/sandbox/.openclaw/skills/` directory.
 
 ## Why this guardrail exists
 
@@ -1309,8 +1598,11 @@ GUARDRAIL
   b64="$(printf '%s' "$guardrail_content" | base64 -w 0)"
 
   echo "  Installing cuopt-setup guardrail into bundled skills dir ..."
-  docker exec "$gw" \
-    kubectl exec -n "$ns" "$sandbox" -- \
+  # /usr/local/lib/... is owned by root, so use the root variant of the
+  # exec helper. The guardrail is read-only data, so writing as root is
+  # safe and matches how the bundled-skills directory was provisioned by
+  # the base image.
+  sandbox_exec_root "$sandbox" \
     sh -c "mkdir -p '${bundled_dir}' && echo '${b64}' | base64 -d > '${bundled_dir}/SKILL.md'" \
     2>/dev/null \
   || echo "  warning: could not install cuopt-setup guardrail (non-fatal)" >&2
@@ -1377,7 +1669,9 @@ print("    skills.load.extraDirs=" + json.dumps(existing))
 '
   local invalidator_b64
   invalidator_b64="$(printf '%s' "$invalidator" | base64 -w 0)"
-  if ! openshell sandbox exec --name "$sandbox" --no-tty -- \
+  # Was: `openshell sandbox exec --no-tty -- bash -c …`, which hangs in
+  # current builds. Direct docker exec returns in <1s.
+  if ! sandbox_exec "$sandbox" \
         bash -c "echo '${invalidator_b64}' | base64 -d | python3" 2>&1; then
     echo "  warning: failed to update openclaw.json — uploaded skills will not appear" >&2
     echo "           in 'openclaw skills list' or the agent's <available_skills> prompt" >&2
@@ -1399,18 +1693,18 @@ print("    skills.load.extraDirs=" + json.dumps(existing))
   #
   # We also defensively `rm -rf` any prior file or directory at the
   # destination before uploading, and fall back to an inline base64 copy
-  # via `openshell sandbox exec` if the upload fails outright.
+  # via sandbox_exec if the upload fails outright.
   local probe="$SCRIPT_DIR/probe_cuopt.py"
   if [[ -f "$probe" ]]; then
-    openshell sandbox exec --name "$sandbox" --no-tty -- \
+    sandbox_exec "$sandbox" \
       rm -rf /sandbox/probe_cuopt.py 2>/dev/null || true
 
     echo "  Uploading probe_cuopt.py -> /sandbox/probe_cuopt.py"
     if ! openshell sandbox upload "$sandbox" "$probe" "/sandbox/" 2>&1; then
-      echo "  Upload failed — falling back to inline base64 copy via sandbox exec"
+      echo "  Upload failed — falling back to inline base64 copy via sandbox_exec"
       local probe_b64
       probe_b64="$(base64 -w 0 < "$probe")"
-      if openshell sandbox exec --name "$sandbox" --no-tty -- \
+      if sandbox_exec "$sandbox" \
            bash -c "echo '${probe_b64}' | base64 -d > /sandbox/probe_cuopt.py" 2>/dev/null; then
         echo "  probe_cuopt.py written via fallback"
       else
@@ -1429,7 +1723,19 @@ cmd_add() {
   cmd_apply_policy "$sandbox"
   cmd_install "$sandbox"
   cmd_install_skill "$sandbox"
-  cmd_test "$sandbox"
+  # Run the test first so any UFW / connectivity output is in the middle
+  # of the scrollback; then print the activation banner (always) and the
+  # service-status summary (only on test failure). That way the last two
+  # loud things on the screen are the next-steps banner and, when
+  # something needs attention, a compact post-mortem of what cmd_test
+  # actually saw.
+  local test_rc=0
+  cmd_test "$sandbox" || test_rc=$?
+  print_activation_banner "$sandbox"
+  if [[ $test_rc -ne 0 ]]; then
+    print_service_status_summary "$sandbox" "$test_rc"
+  fi
+  return $test_rc
 }
 
 
@@ -1461,7 +1767,7 @@ main() {
   case "${sub}" in
     apply-policy)      cmd_apply_policy "${1:-}" ;;
     install)           cmd_install "${1:-}" ;;
-    install-bashrc)    cmd_install_bashrc "${1:-}" ;;
+    install-activation) cmd_install_activation "${1:-}" ;;
     install-skill)     cmd_install_skill "${1:-}" ;;
     cache-wheels)      cmd_cache_wheels "${1:-}" ;;
     clear-wheel-cache) cmd_clear_wheel_cache ;;

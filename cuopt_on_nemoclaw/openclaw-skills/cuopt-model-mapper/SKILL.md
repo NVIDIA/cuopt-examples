@@ -63,13 +63,13 @@ Examples:
 ### 2. Choose the cuOpt path
 
 #### If LP / MILP
-- hand off through `lp-milp-formulation` for formulation discipline
-- use `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
+- hand off through `numerical-optimization-formulation` for formulation discipline
+- use `cuopt-numerical-optimization-api-python` (or `cuopt-numerical-optimization-api-cli` for MPS inputs)
 - preserve direct mappings from source data into variables, coefficients, RHS values, bounds, and objective terms
 
 #### If QP
-- hand off through `qp-formulation` for formulation discipline
-- use `cuopt-qp-api-python`
+- hand off through `numerical-optimization-formulation` for formulation discipline
+- use `cuopt-numerical-optimization-api-python`
 - preserve direct mappings from source data into variables, quadratic objective terms, RHS values, and bounds
 
 #### If routing
@@ -187,14 +187,14 @@ If relevant, also mention which constraint or resource appears to be most limiti
 ## Handoff guidance
 
 - For LP / MILP:
-  - use `lp-milp-formulation`
-  - then use `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
+  - use `numerical-optimization-formulation`
+  - then use `cuopt-numerical-optimization-api-python` (or `cuopt-numerical-optimization-api-cli` for MPS inputs)
   - follow `cuopt-user-rules`
   - in sandbox contexts, follow `cuopt-sandbox` first when required
 
 - For QP:
-  - use `qp-formulation`
-  - then use `cuopt-qp-api-python`
+  - use `numerical-optimization-formulation`
+  - then use `cuopt-numerical-optimization-api-python`
   - follow `cuopt-user-rules`
   - in sandbox contexts, follow `cuopt-sandbox` first when required
 
