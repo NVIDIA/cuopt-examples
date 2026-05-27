@@ -28,8 +28,7 @@ Run these in order, but skip any step already settled from context. Default to f
 4. **`cuopt-model-mapper`** — ask at most the final blocking clarification, then map directly into cuOpt and solve.
 
 Family-specific handoffs after step 4:
-- LP / MILP → `lp-milp-formulation` then `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
-- QP → `qp-formulation` then `cuopt-qp-api-python`
+- LP / MILP / QP → `numerical-optimization-formulation` then `cuopt-numerical-optimization-api-python` (or `cuopt-numerical-optimization-api-cli` for MPS inputs)
 - Routing → `routing-formulation` then `cuopt-routing-api-python`
 
 ## Guardrails

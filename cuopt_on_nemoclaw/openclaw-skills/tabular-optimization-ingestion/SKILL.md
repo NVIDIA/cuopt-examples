@@ -252,12 +252,13 @@ Likely interpretation:
 ## Handoff guidance
 
 - If the data suggests LP / MILP:
-  - hand off to `lp-milp-formulation`
-  - then to `cuopt-lp-milp-api-python` (or `cuopt-lp-milp-api-cli` for MPS inputs)
+  - hand off to `numerical-optimization-formulation`
+  - then to `cuopt-numerical-optimization-api-python` (or
+    `cuopt-numerical-optimization-api-cli` for MPS inputs)
 
 - If the data suggests QP:
-  - hand off to `qp-formulation`
-  - then to `cuopt-qp-api-python`
+  - hand off to `numerical-optimization-formulation`
+  - then to `cuopt-numerical-optimization-api-python`
 
 - If the data suggests routing:
   - hand off to `routing-formulation`

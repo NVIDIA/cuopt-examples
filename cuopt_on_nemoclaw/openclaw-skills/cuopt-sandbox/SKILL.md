@@ -1,6 +1,6 @@
 ---
 name: cuopt-sandbox
-description: Read FIRST whenever a request involves linear programming (LP), mixed-integer linear programming (MILP), quadratic programming (QP), or vehicle routing (VRP, TSP, PDP) — including small / pedagogical / made-up problems ("invent an LP example", "show me a small MILP", "find optimal X under constraints", "minimize cost", "plan deliveries", "schedule with constraints"). In this sandbox, cuOpt is the default solver and must be used whenever it is available; this skill points at the per-task skills (cuopt-user-rules, cuopt-lp-milp-api-python, cuopt-routing-api-python, lp-milp-formulation, etc.) and covers sandbox-specific setup (venv at /sandbox/.openclaw-data/cuopt, host.openshell.internal networking, REST 5000 / gRPC 5001).
+description: Read FIRST whenever a request involves linear programming (LP), mixed-integer linear programming (MILP), quadratic programming (QP), or vehicle routing (VRP, TSP, PDP) — including small / pedagogical / made-up problems ("invent an LP example", "show me a small MILP", "find optimal X under constraints", "minimize cost", "plan deliveries", "schedule with constraints"). In this sandbox, cuOpt is the default solver and must be used whenever it is available; this skill points at the per-task skills (cuopt-user-rules, cuopt-numerical-optimization-api-python, cuopt-routing-api-python, numerical-optimization-formulation, etc.) and covers sandbox-specific setup (venv at /sandbox/.openclaw-data/cuopt, host.openshell.internal networking, REST 5000 / gRPC 5001).
 ---
 
 # NVIDIA cuOpt (Sandbox)
@@ -113,10 +113,22 @@ solves are routed to a host-side cuOpt service over the wire.
      problem classes (binary protocol, lower per-call overhead, better
      streaming behavior). A previous session decision to use REST does
      not justify reusing it after a re-probe reveals gRPC.
-3. Only if **no remote interface** for the required class is available
-   (probe says `none`, or the matching column in the capability table
-   says "Decline"), is local cuOpt even a candidate. The sandbox has no
-   GPU so this will almost certainly fail anyway.
+3. The **only** legitimate evidence that cuOpt is unavailable for your
+   task is a fresh `probe_cuopt.py` result whose `available:` line is
+   `none`, *or* the matching column in the capability table marks the
+   required interface as "Decline". The following do **not** count and
+   never permit skipping cuOpt:
+   - a failed `import cuopt` / `from cuopt import routing` / any
+     `ModuleNotFoundError` in the current interpreter
+   - the problem being small, toy-sized, pedagogical, or "obvious"
+   - a probe result from earlier in the session that wasn't `rest grpc`
+     (re-probe — the operator may have started a service since)
+   - a guess that "cuOpt won't help here"
+   - a hand solution being faster to type
+   If you have any of these and no fresh `none` probe, you are still
+   required to use cuOpt. The sandbox has no GPU, so once you do reach
+   the "local cuOpt is the only candidate" branch (a real `none`
+   probe), it will almost certainly fail anyway — proceed to step 4.
 4. **If every cuOpt path fails**, stop. Explain to the user exactly
    which probe / interface / payload failed and what's needed (operator
    action, network policy, etc.). **Do not** silently fall back to
@@ -146,16 +158,16 @@ upstream, so prefer pattern-based discovery over memorizing exact names:
   concepts and Python client (server skills are not pattern-merged)
 - `skill-evolution` — Detect generalizable learnings during a long-running session
 
-Concrete formulation skills currently installed upstream: `lp-milp-formulation`
-(LP and MILP concepts) and `qp-formulation` (QP concepts, beta). Both are
-reachable through the `*-formulation` pattern above. List the directory to
-see what's actually installed:
+Concrete formulation skill currently installed upstream:
+`numerical-optimization-formulation` (LP, MILP, and QP concepts in one
+skill). Reachable through the `*-formulation` pattern above. List the
+directory to see what's actually installed:
 
 ```bash
 ls -1 /sandbox/.openclaw/skills/
 ```
 
-These are vendored from <https://github.com/NVIDIA/cuopt/tree/main/skills> at
+These are vendored from <https://github.com/NVIDIA/cuopt/tree/release/26.06/skills> at
 sandbox-setup time so the agent can read them locally — the sandbox cannot
 reach `github.com` directly. To refresh, ask the operator to re-run
 `./nemoclaw_cuopt_setup.sh install-skill <sandbox>` on the host.
@@ -167,13 +179,36 @@ The cuOpt client and SDK are installed in a Python virtual environment at
 marks `/sandbox` itself as read-only, so the venv lives in the writable
 subtree under `/sandbox/.openclaw-data/`).
 
-The sandbox's `/sandbox/.bashrc` auto-activates the venv and sets
-`CUOPT_SERVER`, so in most interactive sessions no manual activation is
-needed. To activate explicitly (scripts, non-interactive shells):
+The sandbox's `/sandbox/.bash_profile` auto-activates the venv and sets
+`CUOPT_SERVER`. It fires for **login shells only** — `bash -l`,
+`bash -lc '…'`. Non-login interactive shells (the default behind
+`openshell sandbox connect` / `nemoclaw connect`) and non-login
+non-interactive shells (`bash -c '…'`, `sh -c '…'`, the default behind
+many `tool_call exec` paths) do **not** source `.bash_profile`, so the
+venv will *not* be active there.
+
+This is a NemoClaw constraint, not a cuOpt choice: `/sandbox/.bashrc`
+(the file non-login interactive bash would normally source) is sealed
+root-owned mode 444 *and* Landlock-protected (see
+`04-landlock-readonly.sh` check 2 — even root processes can't write to
+it after the sandbox starts), so we can't put activation there.
+
+Three ways to get a venv-active shell:
 
 ```bash
-source /sandbox/.openclaw-data/cuopt/bin/activate
+# After `nemoclaw connect <sandbox>` (non-login), inside the sandbox shell,
+# either source .bash_profile in place:
+source /sandbox/.bash_profile
+# or replace the current shell with a login shell:
+exec bash -l
+
+# From the host: one-shot login-shell command for any single task.
+openshell sandbox exec --name <sandbox-name> -- bash -lc 'python3 …'
 ```
+
+Prefer the `bash -lc '…'` wrapper for anything dispatched through
+`tool_call exec` — it picks up `CUOPT_SERVER`, the `cuopt_sh` alias, and
+the venv `PATH` in one shot.
 
 If the venv doesn't exist, ask the operator to run the host-side setup
 script (`./nemoclaw_cuopt_setup.sh add <sandbox-name>`); the sandbox user
@@ -194,15 +229,27 @@ Two server interfaces are available on the host:
 | REST      | 5000 | HTTP     | `cuopt_sh` CLI, `cuopt_sh_client` Python client, health checks |
 | gRPC      | 5001 | HTTP/2   | `cuopt_cli` remote execution, Python SDK remote solves |
 
-The `CUOPT_SERVER` environment variable (if set in `.bashrc`) contains the
-REST `host:port` value.
+The `CUOPT_SERVER` environment variable (set in `.bash_profile` for login
+shells) contains the REST `host:port` value.
 
 ## Capability check — run this FIRST
 
+**Do not substitute `import cuopt` for the probe.** In this sandbox a
+failed `import cuopt` (or `from cuopt import routing`, or
+`from cuopt.linear_programming...`) only tells you the *local* runtime
+can't initialize — almost always because there is no GPU here, and the
+service runs on the host. It says **nothing** about whether the
+host-side cuOpt service is reachable. The only authoritative
+capability signal is what `probe_cuopt.py` prints on its `available:`
+line. If the probe says `rest`, `grpc`, or `rest grpc`, cuOpt is
+available and you must use it — regardless of what a local import
+does. If you catch yourself reasoning "I tried `import cuopt`, it
+failed, so I'll solve this by hand", stop and run the probe.
+
 Before doing any cuOpt work, probe what the host is actually serving.
-**The probe needs the cuOpt venv** for `grpcio`; if your shell is
-non-interactive `~/.bashrc` may not have auto-activated it, so source
-the venv explicitly:
+**The probe needs the cuOpt venv** for `grpcio`; non-login shells
+(`bash -c '…'`, plain `sh -c '…'`) do not source `.bash_profile`, so
+either wrap the call in `bash -lc '…'` or source the venv explicitly:
 
 ```bash
 source /sandbox/.openclaw-data/cuopt/bin/activate && \
@@ -431,5 +478,5 @@ If this fails, do not move on to a real problem — fix connectivity first
 | `available: none` from `probe_cuopt.py` | No cuOpt service running on host, ports not in sandbox policy, or host firewall | Ask operator to start a cuOpt server (`SETUP.md` > Starting the cuOpt server) and re-run `nemoclaw_cuopt_setup.sh apply-policy`; verify host firewall opens 5000 / 5001 |
 | Connection timeout / hang | Server not running or host firewall blocking Docker | Ask operator to verify from host: `ss -tlnp \| grep 500` |
 | Timeout through `10.200.0.1:3128` | Sandbox proxy cannot reach the destination | Ask operator to verify sandbox network policy includes the cuOpt ports |
-| `ModuleNotFoundError` | Venv not activated | Run `source /sandbox/.openclaw-data/cuopt/bin/activate` |
+| `ModuleNotFoundError` | Venv not activated — common in non-login shells (`bash -c '…'`) because `.bash_profile` only fires for login shells | Wrap the call in `bash -lc '…'` (preferred) or `source /sandbox/.openclaw-data/cuopt/bin/activate` before the python invocation |
 | No `Using remote GPU backend` in output | Remote env vars not set or not picked up | Ensure `CUOPT_REMOTE_HOST` and `CUOPT_REMOTE_PORT` are exported before the Python process starts |
