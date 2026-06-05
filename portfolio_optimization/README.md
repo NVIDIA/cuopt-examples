@@ -14,10 +14,10 @@ The portfolio optimization notebook solves a portfolio optimization problem wher
 
 - The aim is to balance expected return with the risk of losses
 
-### 3. Portfolio Frontier with Shadow Prices (QP)
+### 3. Multi-Objective Portfolio Optimization (QP)
 
-- Builds the efficient frontier as a named ε-constraint sweep (following the `cuopt-multi-objective-exploration` skill).
-- Adds the return-constraint **dual** — the shadow price d(variance)/d(return) — along the frontier, with the PDLP-tolerance caveat.
+- Traces the efficient frontier (return vs. risk) as an ε-constraint sweep.
+- Reads each point's **dual**: the sensitivity d(variance)/d(return), from cuOpt's barrier (interior-point) solver.
 
 ### 4. Advanced Portfolio Optimization
 

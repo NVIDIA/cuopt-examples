@@ -14,9 +14,9 @@ The workforce optimization notebook solves a mixed integer linear programming pr
 
 ### 2. Workforce Optimization (Multi-Objective)
 
-Extends the MILP above into a Pareto frontier — choose the tradeoff instead of getting one plan:
+The multi-objective notebook extends the MILP above into a Pareto frontier, so you see the tradeoff instead of a single plan. It traces two tradeoffs with the ε-constraint method:
 
-- **cost vs. coverage** — sweep a coverage floor as an ε-constraint; read the marginal cost per shift off the frontier.
-- **cost vs. fairness** — promote the fixed per-worker shift cap into a swept objective (a constraint treated as a candidate objective).
+- **cost vs. coverage**: sweep a coverage floor as an ε-constraint, then read the marginal cost per shift off the frontier.
+- **cost vs. fairness**: sweep the fixed per-worker shift cap, a constraint whose assumed level is a candidate objective.
 
-Follows the `cuopt-multi-objective-exploration` skill. A MILP has no constraint duals, so the marginal cost comes from the frontier itself.
+A MILP has no constraint duals, so the marginal cost is read off the frontier itself.
