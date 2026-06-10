@@ -13,6 +13,12 @@ The purpose of this skill is to bridge the gap between messy uploaded data and s
 
 This skill does **not** solve the optimization problem itself. It inspects the data, infers likely modeling roles, and identifies what still needs clarification.
 
+**It does not authorize heuristic, greedy, or backtracking schedules as
+answers.** In the NemoClaw sandbox, read `cuopt-first`: the first solver
+that produces assignments or a schedule must be cuOpt after probe → env →
+smoke gates pass. Ingestion output is a modeling interpretation (entities,
+objective fields, constraints) — never a completed plan.
+
 This skill refines the optimization interpretation using the uploaded data; it does not replace the earlier intent decision unless the data clearly contradicts it.
 
 ## Purpose
@@ -144,7 +150,6 @@ Examples:
 - Are demands mandatory or forecast-only?
 - Must decisions be integers?
 - Are these time windows hard constraints?
-- Is this travel matrix symmetric?
 - Can unmet demand be allowed with penalty?
 - Is profit net profit or revenue only?
 

@@ -44,12 +44,25 @@ it can be any existing sandbox.
 
 ## What the setup script does
 
-- **add** — Add cuOpt to an existing sandbox: apply-policy → install → install-skill → test
+- **add** — Add cuOpt to an existing sandbox: apply-policy → install → install-skill → `test --smoke`
 - **apply-policy** — Merges cuOpt network rules into a running sandbox's policy
 - **install** — Creates a Python venv (`/sandbox/.openclaw-data/cuopt`), installs `cuopt_sh_client`, `cuopt-cu13`, and `grpcio`, and stamps the cuOpt venv activation file (`/sandbox/.bash_profile`)
 - **install-activation** — Re-stamps `/sandbox/.bash_profile` without reinstalling the venv (use after changing `CUOPT_HOST`, `CUOPT_PORT`, or `CUOPT_VENV`)
 - **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox, then vendors the upstream cuOpt skills (numerical optimization for LP/MILP/QP, routing, server, formulation, user-rules, skill-evolution) from `github.com/NVIDIA/cuopt/tree/release/26.06/skills` so the agent can read them without outbound HTTPS. Override the upstream ref via `CUOPT_SKILLS_REF` (default `release/26.06`); narrow what gets installed via `CUOPT_SKILLS_SKIP` (comma-separated globs, default `cuopt-install,*developer*,*-api-c`). Finally, the step writes a fresh `skills.entries.cuopt-sandbox.config.lastInstallAt` timestamp into `~/.openclaw/openclaw.json` so the gateway's config-reload watcher invalidates the cached `<available_skills>` snapshot — without this, skills uploaded after the agent's first run never appear in the prompt (see [How `<available_skills>` is cached](#how-available_skills-is-cached) below).
-- **test** — Smoke tests PyPI access and cuOpt server connectivity from inside the sandbox
+- **test** — Connectivity probe from inside the sandbox (`probe_cuopt.py` + pip check). Does **not** run solve smokes.
+- **test --smoke** — Probe plus end-to-end LP/MILP/VRP solves via `/sandbox/smoke_*.py` when `install-skill` has uploaded them. LP/MILP run only if gRPC is reachable; VRP only if REST is reachable (per the probe's `available:` line).
+
+### Version compatibility
+
+`nemoclaw_cuopt_setup.sh` was last verified against **nemoclaw v0.0.55** and **openshell v0.0.44**. If your installed versions differ, the script prints a non-fatal banner at startup. Silence it with `NEMOCLAW_VERSION_CHECK=0`.
+
+The public NemoClaw installer defaults to the `lkg` ref, which currently points at the same commit as **v0.0.55**. To pin explicitly:
+
+```bash
+NEMOCLAW_INSTALL_TAG=v0.0.55 \
+  curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- \
+  --non-interactive --yes-i-accept-third-party-software
+```
 
 ## Getting cuOpt data into the sandbox
 
@@ -116,7 +129,8 @@ Each subdirectory containing a `SKILL.md` will be uploaded. Then re-run:
 | What | Path |
 |------|------|
 | Setup script | `cuopt_on_nemoclaw/nemoclaw_cuopt_setup.sh` |
-| Endpoint probe | `cuopt_on_nemoclaw/probe_cuopt.py` (uploaded to `/sandbox/probe_cuopt.py`; reports both REST and gRPC reachability in one call) |
+| Endpoint probe | `cuopt_on_nemoclaw/probe_cuopt.py` → `/sandbox/probe_cuopt.py` (REST + gRPC reachability) |
+| Smoke tests | `smoke_lp.py`, `smoke_milp.py`, `smoke_vrp.py` → `/sandbox/` (pre-built; agent runs as-is — see skills) |
 | Skill source files | `cuopt_on_nemoclaw/openclaw-skills/cuopt-sandbox/SKILL.md` |
 | cuOpt venv in sandbox | `/sandbox/.openclaw-data/cuopt/` |
 

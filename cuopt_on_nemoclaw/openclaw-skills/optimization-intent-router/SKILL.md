@@ -63,7 +63,7 @@ Weaker but meaningful signals:
 - "How should we allocate this?"
 - "How can we reduce cost while meeting demand?"
 
-When weaker signals appear, inspect whether there are real constraints and decisions. If yes, treat it as optimization.
+When weaker signals appear, inspect whether there are real constraints and decisions. If yes, treat it as optimization — and in the NemoClaw sandbox, **`cuopt-first` applies immediately** (probe before any schedule/heuristic output).
 
 ## Route classification
 

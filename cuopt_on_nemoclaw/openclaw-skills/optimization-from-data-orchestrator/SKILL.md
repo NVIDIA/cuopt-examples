@@ -20,11 +20,16 @@ Skip this skill when the user is clearly asking for non-optimization analytics, 
 
 ## Sequence
 
+**Step 0 (NemoClaw sandbox only — do not skip):** `cuopt-first` →
+probe → `cuopt-remote-env` → smoke test. **No user-visible schedule,
+assignment, heuristic plan, or feasibility verdict before step 0
+completes.** Data files may be read for column/constraint discovery only.
+
 Run these in order, but skip any step already settled from context. Default to fast mode; surface replayable/auditable mode only on a real signal (reruns, audit, export, recurring planning).
 
 1. **`optimization-intent-router`** — decide whether this is optimization at all and which family (LP / MILP / QP / routing). If non-optimization, stop the optimization flow.
 2. **`optimization-mode-router`** — *only if* there is a signal that replayability, audit, export, or recurring runs may matter. Otherwise stay in fast mode silently.
-3. **`tabular-optimization-ingestion`** — identify row grain and table roles, infer likely objective and constraint fields, refine the family classification if the data clearly supports a different one, and surface any blockers.
+3. **`tabular-optimization-ingestion`** — identify row grain and table roles, infer likely objective and constraint fields, refine the family classification if the data clearly supports a different one, and surface any blockers. **Output interpretation only — not a schedule or heuristic solve.**
 4. **`cuopt-model-mapper`** — ask at most the final blocking clarification, then map directly into cuOpt and solve.
 
 Family-specific handoffs after step 4:
@@ -33,8 +38,15 @@ Family-specific handoffs after step 4:
 
 ## Guardrails
 
-- Do not skip intent classification and jump directly to cuOpt from raw data.
+- **In NemoClaw sandbox:** run `cuopt-first` step 0 (probe → env → smoke)
+  before any optimization **answer** — ingestion steps do not authorize
+  heuristic schedules or feasibility substitutes.
+- Do not skip intent classification and jump directly to cuOpt from raw data
+  **without** step 0 infrastructure gates — but step 0 is fast and mandatory.
 - Do not ask a long questionnaire before inspecting the uploaded data.
 - Do not trigger replayable/auditable mode by default — only when the user signals reuse, audit, export, or recurring runs.
 - Do not let ingestion become solver construction; the steps stay distinct.
 - Do not use cuOpt for descriptive analytics tasks.
+- **Do not produce a heuristic/greedy/backtracking schedule during steps
+  1–3** as a stand-in for cuOpt; the first solver that emits assignments
+  must be cuOpt after step 0 passes.

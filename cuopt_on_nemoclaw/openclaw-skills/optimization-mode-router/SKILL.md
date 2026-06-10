@@ -120,17 +120,20 @@ After selecting a mode, hand off based on problem type:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python` (or
     `cuopt-numerical-optimization-api-cli` for MPS inputs)
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+    before any gRPC Python solve
 
 - If the request is QP:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python`
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+    before any gRPC Python solve
 
 - If the request is routing (VRP / TSP / PDP):
   - use `routing-formulation`
   - then use `cuopt-routing-api-python`
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+    before any gRPC Python solve
 
 - If the user is asking about server usage or deployment rather than solving a model directly:
   - use `cuopt-server-common` or `cuopt-server-api-python` as appropriate

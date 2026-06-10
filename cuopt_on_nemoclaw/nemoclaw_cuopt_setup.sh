@@ -17,7 +17,7 @@
 # NemoClaw cuOpt sandbox setup
 #
 # Subcommands:
-#   add [NAME]                 Add cuOpt to a sandbox: policy + install + skill + test.
+#   add [NAME]                 Add cuOpt to a sandbox: policy + install + skill + test --smoke.
 #   apply-policy [NAME]        Add cuOpt network policy to a running sandbox.
 #   install [NAME]             Install cuOpt packages in the sandbox venv and
 #                              stamp the activation file (see install-activation).
@@ -35,7 +35,8 @@
 #                              `add` runs against any sandbox reuse the cache
 #                              and install offline.
 #   clear-wheel-cache          Remove $CUOPT_WHEEL_CACHE.
-#   test [NAME]                Smoke-test PyPI + cuOpt server reachability.
+#   test [NAME]                Probe REST/gRPC reachability from the sandbox (default).
+#   test --smoke [NAME]        Probe + LP/MILP/VRP solve smokes when installed and reachable.
 #
 # Flags:
 #   -y, --yes       Skip confirmation prompts (for CI/CD).
@@ -89,7 +90,8 @@
 #   nemoclaw delete cuopt && nemoclaw create cuopt   # Recreate sandbox
 #   ./nemoclaw_cuopt_setup.sh add cuopt              # Now installs offline (fast)
 #   ./nemoclaw_cuopt_setup.sh apply-policy bob       # Just fix network policy
-#   ./nemoclaw_cuopt_setup.sh test cuopt             # Re-run smoke test
+#   ./nemoclaw_cuopt_setup.sh test cuopt             # Connectivity probe only
+#   ./nemoclaw_cuopt_setup.sh test --smoke cuopt    # Probe + solve smokes
 #
 # Version compatibility:
 #   The TESTED_NEMOCLAW_VERSION / TESTED_OPENSHELL_VERSION constants below
@@ -98,8 +100,11 @@
 #   the installed tools differ (non-fatal). To install the exact tested
 #   NemoClaw build:
 #
-#     NEMOCLAW_INSTALL_TAG=v<tested-version> \
+#     NEMOCLAW_INSTALL_TAG=v0.0.55 \
 #       curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
+#
+#   The public installer defaults to the `lkg` ref, which currently matches
+#   v0.0.55; use the tag above to pin even after `lkg` moves forward.
 #
 #   Silence the banner with NEMOCLAW_VERSION_CHECK=0.
 # =============================================================================
@@ -172,13 +177,17 @@ CUOPT_TEST_SANDBOX_GRPC=""
 # a newer release end-to-end. Used by check_versions() to surface a
 # non-fatal warning banner if the installed tools drift ahead.
 #
-# To install the exact tested NemoClaw build:
-#   NEMOCLAW_INSTALL_TAG=v${TESTED_NEMOCLAW_VERSION} \
+# To install the exact tested NemoClaw build (openshell is bundled with the
+# NemoClaw release this script was verified against):
+#   NEMOCLAW_INSTALL_TAG=v0.0.55 \
 #     curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
+# The public installer defaults to `lkg`, which currently resolves to the same
+# commit as v0.0.55. Pin the tag if you need reproducibility after lkg moves.
+#
 # Silence the banner with NEMOCLAW_VERSION_CHECK=0.
-TESTED_NEMOCLAW_VERSION="0.0.48"
-TESTED_OPENSHELL_VERSION="0.0.39"
+TESTED_NEMOCLAW_VERSION="0.0.55"
+TESTED_OPENSHELL_VERSION="0.0.44"
 
 # ── NemoClaw / OpenShell version compatibility check ─────────────
 # Non-fatal. Prints a warning banner when the installed tool version
@@ -335,6 +344,18 @@ sandbox_exec_root() {
   local container
   container=$(find_sandbox_container "$sandbox") || return $?
   docker exec -u root "$container" "$@"
+}
+
+# sandbox_run_script <sandbox-name>
+#   Read a bash script from stdin and run it in the sandbox container.
+#   Prefer this over piping to `openshell sandbox connect` for batch
+#   commands — connect echoes the script to the terminal (OpenShell
+#   0.0.44+ bracketed-paste / line-echo behavior).
+sandbox_run_script() {
+  local sandbox="$1"
+  local container
+  container=$(find_sandbox_container "$sandbox") || return $?
+  docker exec -i -u sandbox -e HOME=/sandbox "$container" bash
 }
 
 # upload_wheel_cache <sandbox-name> <host-cache-dir> <sandbox-dest-dir>
@@ -1087,7 +1108,7 @@ cmd_install() {
     "exit"
   )
 
-  printf '%s\n' "${commands[@]}" | openshell sandbox connect "$sandbox"
+  printf '%s\n' "${commands[@]}" | sandbox_run_script "$sandbox"
 
   local cuopt_ip="host.openshell.internal"
   [[ -n "$CUOPT_HOST" ]] && cuopt_ip="$CUOPT_HOST"
@@ -1244,8 +1265,15 @@ INNER_EOF
 }
 
 # ── test ──────────────────────────────────────────────────────────
+# Modes:
+#   probe (default) — pip check + probe_cuopt.py only
+#   smoke           — probe + LP/MILP/VRP solve scripts when installed and reachable
 cmd_test() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
+  local mode="${2:-probe}"
+  local run_solves=false
+  [[ "$mode" == smoke || "$mode" == --smoke ]] && run_solves=true
+
   local venv="/sandbox/${CUOPT_VENV}"
   local grpc_host="host.openshell.internal"
   local cuopt_url="http://host.openshell.internal:${CUOPT_PORT}"
@@ -1281,14 +1309,18 @@ cmd_test() {
   fi
 
   echo "Host services: REST=$(if $has_rest; then echo UP; else echo DOWN; fi)  gRPC=$(if $has_grpc; then echo UP; else echo DOWN; fi)"
-  echo "Smoke-testing sandbox: $sandbox (venv: $venv) ..."
+  if $run_solves; then
+    echo "Testing sandbox: $sandbox (venv: $venv) — probe + solve smokes ..."
+  else
+    echo "Testing sandbox: $sandbox (venv: $venv) — connectivity probe only ..."
+  fi
 
-  # probe_cuopt.py reports REST and gRPC reachability in one call. We pass
-  # CUOPT_SERVER_HOST/PORT (REST) and CUOPT_REMOTE_HOST/PORT (gRPC) so the
-  # probe checks the same endpoints we just verified are listening on the
-  # host. The probe's exit code is non-zero only when *both* are unreachable
-  # from inside the sandbox — `|| true` prevents that from breaking the
-  # heredoc's overall exit status.
+  local solves_flag=false
+  $run_solves && solves_flag=true
+
+  # probe_cuopt.py reports REST and gRPC reachability. Solve smokes run only
+  # In test --smoke mode, only when scripts exist, and only when the probe's
+  # `available:` line shows the matching service (REST for VRP, gRPC for LP/MILP).
   local sandbox_cmds="
 source ${venv}/bin/activate
 echo '--- pip check ---'
@@ -1296,20 +1328,68 @@ python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__
 
 echo ''
 echo '--- cuOpt endpoint probe (REST=${cuopt_url}, gRPC=${grpc_host}:${CUOPT_GRPC_PORT}) ---'
-CUOPT_SERVER_HOST=${grpc_host} CUOPT_SERVER_PORT=${CUOPT_PORT} \\
-CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
-python3 /sandbox/probe_cuopt.py || true
+PROBE_OUT=\$(CUOPT_SERVER_HOST=${grpc_host} CUOPT_SERVER_PORT=${CUOPT_PORT} \\
+  CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
+  python3 /sandbox/probe_cuopt.py 2>&1) || true
+echo \"\$PROBE_OUT\"
 
-echo ''
-exit
+if [[ ${solves_flag} == true ]]; then
+  echo ''
+  echo '--- cuOpt solve smokes (test --smoke) ---'
+  GRPC_OK=false
+  REST_OK=false
+  echo \"\$PROBE_OUT\" | grep -qE '^available:.*grpc' && GRPC_OK=true
+  echo \"\$PROBE_OUT\" | grep -qE '^available:.*rest'  && REST_OK=true
+
+  if [[ \$GRPC_OK == true ]]; then
+    if [[ -f /sandbox/smoke_lp.py ]]; then
+      echo '--- remote LP smoke (smoke_lp.py) ---'
+      CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
+        python3 /sandbox/smoke_lp.py || true
+      echo ''
+    else
+      echo 'LP smoke skipped (/sandbox/smoke_lp.py missing; run install-skill)'
+      echo ''
+    fi
+    if [[ -f /sandbox/smoke_milp.py ]]; then
+      echo '--- remote MILP smoke (smoke_milp.py) ---'
+      CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
+        python3 /sandbox/smoke_milp.py || true
+      echo ''
+    fi
+  else
+    echo 'LP/MILP smokes skipped (gRPC not reachable from sandbox — see probe above)'
+    echo ''
+  fi
+
+  if [[ \$REST_OK == true ]]; then
+    if [[ -f /sandbox/smoke_vrp.py ]]; then
+      echo '--- REST VRP smoke (smoke_vrp.py) ---'
+      CUOPT_SERVER_HOST=${grpc_host} CUOPT_SERVER_PORT=${CUOPT_PORT} \\
+        python3 /sandbox/smoke_vrp.py || true
+      echo ''
+    else
+      echo 'VRP smoke skipped (/sandbox/smoke_vrp.py missing; run install-skill)'
+      echo ''
+    fi
+  else
+    echo 'VRP smoke skipped (REST not reachable from sandbox — see probe above)'
+    echo ''
+  fi
+fi
+
 "
   # Capture the sandbox output so we can both display it AND parse it for
   # reachability ('unreachable' literal from probe_cuopt.py). `tee` keeps
   # the live UX intact; mktemp avoids clobbering anything else in /tmp.
   local probe_log
   probe_log="$(mktemp /tmp/cuopt-probe-XXXXXX.log)"
-  echo "$sandbox_cmds" | openshell sandbox connect "$sandbox" 2>&1 \
-    | tee "$probe_log"
+  if ! printf '%s' "$sandbox_cmds" | sandbox_run_script "$sandbox" 2>&1 \
+        | tee "$probe_log"; then
+    rm -f "$probe_log"
+    echo "error: sandbox test script failed (is sandbox '${sandbox}' running?)" >&2
+    return 1
+  fi
   echo "Test complete."
 
   # Detect probe failures per service. Only treat as a failure if the
@@ -1421,6 +1501,38 @@ skill_is_skipped() {
     fi
   done
   return 1
+}
+
+# Upload a single file to /sandbox/<basename>. openshell upload treats DEST
+# as a directory; passing a file path creates a wrongly named directory.
+upload_sandbox_file() {
+  local sandbox="$1"
+  local src="$2"
+  local base
+  base="$(basename "$src")"
+  local dest="/sandbox/${base}"
+
+  if [[ ! -f "$src" ]]; then
+    echo "  warning: ${base} not found at $src — skipping" >&2
+    return 1
+  fi
+
+  sandbox_exec "$sandbox" rm -rf "$dest" 2>/dev/null || true
+
+  echo "  Uploading ${base} -> ${dest}"
+  if ! openshell sandbox upload "$sandbox" "$src" "/sandbox/" 2>&1; then
+    echo "  Upload failed — falling back to inline base64 copy via sandbox_exec"
+    local file_b64
+    file_b64="$(base64 -w 0 < "$src")"
+    if sandbox_exec "$sandbox" \
+         bash -c "echo '${file_b64}' | base64 -d > '${dest}'" 2>/dev/null; then
+      echo "  ${base} written via fallback"
+    else
+      echo "  warning: failed to write ${base} into sandbox" >&2
+      return 1
+    fi
+  fi
+  return 0
 }
 
 # ── install-skill ─────────────────────────────────────────────────
@@ -1565,21 +1677,29 @@ cmd_install_skill() {
   guardrail_content="$(cat <<'GUARDRAIL'
 ---
 name: cuopt-setup
-description: "Read this FIRST when working with cuOpt. If you cannot read the cuopt-sandbox skill at ~/.openclaw/skills/cuopt-sandbox/SKILL.md, this tells you where the real file lives."
+description: "Read this FIRST in every sandbox session. Tool catalog: if you only see tool_search/tool_describe/tool_call, run tool_search (query read or shell) — read/write/exec are NOT missing. cuOpt path: read /sandbox/.openclaw/skills/cuopt-first/SKILL.md then cuopt-sandbox. MILP imports: cuopt.linear_programming.problem (NOT from cuopt import milp) — see cuopt-python-api. If ~ paths fail, use absolute paths below."
 ---
 
-# cuOpt sandbox skill — path resolution
+# cuOpt sandbox — tools + skill paths
 
-The cuopt-sandbox skill (sandbox-specific setup, networking, venv) is
-installed at an absolute path that always works:
+## Tools (compact catalog)
+
+NemoClaw hides `read`, `write`, `exec` behind `tool_search` /
+`tool_describe` / `tool_call`. **Do not claim files are unreadable.**
+Run `tool_call` → `tool_search` with `query: "read"` or `"shell"`,
+then `tool_call` the real tool. Full guide:
+`/sandbox/.openclaw/skills/always-tool-discovery/SKILL.md`
+
+## cuOpt skills
+
+The cuopt-sandbox skill (sandbox setup, networking, venv) is installed at:
 
     /sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md
 
-Read that file FIRST for sandbox-specific cuOpt setup, then consult the
-per-task sibling skills it points at (cuopt-user-rules,
-cuopt-numerical-optimization-api-python, cuopt-routing-api-python,
-numerical-optimization-formulation, etc.) which live in the same
-`/sandbox/.openclaw/skills/` directory.
+Start with `/sandbox/.openclaw/skills/cuopt-first/SKILL.md` for optimization
+tasks. **Python MILP/LP imports:** `/sandbox/.openclaw/skills/cuopt-python-api/SKILL.md`
+(never `from cuopt import milp`). Read cuopt-sandbox for full wiring, then sibling skills in the same
+directory (cuopt-user-rules, cuopt-numerical-optimization-api-python, etc.).
 
 ## Why this guardrail exists
 
@@ -1645,6 +1765,9 @@ if extra_dir not in existing:
 load["extraDirs"] = existing
 load.setdefault("watch", True)
 load.setdefault("watchDebounceMs", 250)
+# skills.priority is NOT valid on OpenClaw 2026.5.x (added in a later PR).
+# Remove it if a prior install-skill run wrote one — it breaks config validate.
+skills.pop("priority", None)
 # Drop the obsolete sentinel from the prior mechanism if present so the
 # config stays clean. The new loader ignores skills.entries.X.config
 # for discovery purposes.
@@ -1680,40 +1803,12 @@ print("    skills.load.extraDirs=" + json.dumps(existing))
 
   echo "Skills installed."
 
-  # Upload the combined REST/gRPC probe directly to /sandbox/. The probe is
-  # not a skill (it's run by `cmd_test`), so it doesn't need to live under
-  # the skills tree. Direct upload is preferred when policy allows it.
-  #
-  # IMPORTANT: `openshell sandbox upload` treats DEST as a *directory* and
-  # lands the file at DEST/<basename(SRC)>. Passing a file path (e.g.
-  # `/sandbox/probe_cuopt.py`) creates a directory with that name containing
-  # the real file inside — Python then errors with "can't find '__main__'
-  # module" when invoked against the directory. So we pass `/sandbox/` and
-  # let the basename come from SRC.
-  #
-  # We also defensively `rm -rf` any prior file or directory at the
-  # destination before uploading, and fall back to an inline base64 copy
-  # via sandbox_exec if the upload fails outright.
-  local probe="$SCRIPT_DIR/probe_cuopt.py"
-  if [[ -f "$probe" ]]; then
-    sandbox_exec "$sandbox" \
-      rm -rf /sandbox/probe_cuopt.py 2>/dev/null || true
-
-    echo "  Uploading probe_cuopt.py -> /sandbox/probe_cuopt.py"
-    if ! openshell sandbox upload "$sandbox" "$probe" "/sandbox/" 2>&1; then
-      echo "  Upload failed — falling back to inline base64 copy via sandbox_exec"
-      local probe_b64
-      probe_b64="$(base64 -w 0 < "$probe")"
-      if sandbox_exec "$sandbox" \
-           bash -c "echo '${probe_b64}' | base64 -d > /sandbox/probe_cuopt.py" 2>/dev/null; then
-        echo "  probe_cuopt.py written via fallback"
-      else
-        echo "  warning: failed to write probe_cuopt.py into sandbox" >&2
-      fi
-    fi
-  else
-    echo "  warning: probe_cuopt.py not found at $probe — skipping" >&2
-  fi
+  # Sandbox helper scripts (not skills): probe + smoke tests for agents and
+  # cmd_test. Uploaded to /sandbox/ directly when policy allows.
+  local helper
+  for helper in probe_cuopt.py smoke_lp.py smoke_milp.py smoke_vrp.py; do
+    upload_sandbox_file "$sandbox" "$SCRIPT_DIR/$helper"
+  done
 }
 
 
@@ -1730,7 +1825,7 @@ cmd_add() {
   # something needs attention, a compact post-mortem of what cmd_test
   # actually saw.
   local test_rc=0
-  cmd_test "$sandbox" || test_rc=$?
+  cmd_test "$sandbox" smoke || test_rc=$?
   print_activation_banner "$sandbox"
   if [[ $test_rc -ne 0 ]]; then
     print_service_status_summary "$sandbox" "$test_rc"
@@ -1771,7 +1866,21 @@ main() {
     install-skill)     cmd_install_skill "${1:-}" ;;
     cache-wheels)      cmd_cache_wheels "${1:-}" ;;
     clear-wheel-cache) cmd_clear_wheel_cache ;;
-    test)              cmd_test "${1:-}" ;;
+    test)
+      local t_sandbox="" t_smoke=false
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --smoke) t_smoke=true; shift ;;
+          -*) echo "unknown test flag: $1" >&2; exit 1 ;;
+          *) t_sandbox="$1"; shift ;;
+        esac
+      done
+      if $t_smoke; then
+        cmd_test "${t_sandbox:-$CUOPT_SANDBOX}" smoke
+      else
+        cmd_test "${t_sandbox:-$CUOPT_SANDBOX}" probe
+      fi
+      ;;
     add)               cmd_add "${1:-}" ;;
     help|-h|--help)    usage ;;
     *)
