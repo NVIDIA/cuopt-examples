@@ -26,7 +26,7 @@ def _require_remote_env() -> None:
     if not environ.get("CUOPT_REMOTE_HOST") or not environ.get("CUOPT_REMOTE_PORT"):
         print(
             "error: export CUOPT_REMOTE_HOST and CUOPT_REMOTE_PORT before "
-            "running (see /sandbox/.openclaw/skills/cuopt-remote-env/SKILL.md)",
+            "running (see /sandbox/.openclaw/skills/cuopt-sandbox/references/remote-env-and-smoke.md)",
             file=sys.stderr,
         )
         sys.exit(1)

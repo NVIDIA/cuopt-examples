@@ -1,7 +1,14 @@
 ---
 name: optimization-intent-router
-summary: Detect when a user question should be treated as an optimization problem and route it toward LP, MILP, QP, routing, or non-optimization handling.
-description: Use when a user provides data and asks a natural-language business or planning question that may require optimization rather than simple analytics.
+version: "26.06.01"
+description: Classify whether a data-backed request is LP, MILP, QP, routing, or non-optimization analytics.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - nemoclaw
+    - orchestration
 origin: skill-evolution
 ---
 
@@ -35,7 +42,29 @@ Your job is to recognize when the request is really asking for an optimization m
 
 ## Core rule
 
-Route to optimization only when the user is asking for the **best / optimal / minimum / maximum / least-cost / highest-profit** plan, allocation, assignment, schedule, route, or mix **subject to constraints or tradeoffs**.
+Route to optimization when the user wants a **plan produced under
+constraints** — assignment, schedule, allocation, route, mix, or mix of
+resources — whether they say **feasible/valid**, **minimize/maximize**, or
+**best/optimal**.
+
+Use **structure**, not exact keywords:
+
+| Signal | Route to cuOpt? |
+|---|---|
+| Constructive + constraint tables (uploaded or referenced) | Yes — family TBD (MILP/LP/QP/routing) |
+| Minimize / maximize / best / optimal / least cost | Yes |
+| Feasible / valid / make it work / respect rules (constructive) | Yes — feasibility = hard constraints |
+| Summarize / chart / filter / explain data only | No |
+
+**NemoClaw sandbox:** When constructive + constraint data →
+**`cuopt-sandbox` gates immediately** before any schedule, roster,
+assignment, or route output — regardless of whether the user said
+minimize or optimal. Do not use a greedy Python builder as a first
+deliverable.
+
+Paraphrase examples (non-exhaustive): "plan the season", "set game times",
+"fill the calendar", "assign shifts", "put jobs on machines", "build a
+schedule" — same intent. See `cuopt-sandbox/references/intent-and-triggers.md`.
 
 If the user is only asking for:
 - descriptive statistics
@@ -52,6 +81,8 @@ then do **not** force the request into optimization.
 
 Strong signals:
 - words like **optimize**, **optimal**, **best**, **maximize**, **minimize**
+- **build / create / assign** a schedule, roster, shift plan, or calendar
+  from structured data (sandbox: treat as MILP even without minimize)
 - resource tradeoffs: capacity, budget, time, labor, inventory, demand, hours, materials
 - decision language: how much, how many, which, assign, allocate, route, schedule, choose
 - explicit constraints: at most, at least, must, cannot exceed, within budget, limited by
@@ -63,7 +94,7 @@ Weaker but meaningful signals:
 - "How should we allocate this?"
 - "How can we reduce cost while meeting demand?"
 
-When weaker signals appear, inspect whether there are real constraints and decisions. If yes, treat it as optimization — and in the NemoClaw sandbox, **`cuopt-first` applies immediately** (probe before any schedule/heuristic output).
+When weaker signals appear, inspect whether there are real constraints and decisions. If yes, treat it as optimization — and in the NemoClaw sandbox, **`cuopt-sandbox` gates apply immediately** (probe before any schedule/heuristic output).
 
 ## Route classification
 
@@ -98,6 +129,8 @@ Common examples:
 - workforce scheduling with headcounts
 - assignment with binary decisions
 - product counts that must be whole
+- **slot/resource scheduling** (games, shifts, appointments → time slots
+  and resources) — including when the user only says "build a schedule"
 
 ### Route to QP
 Use QP when:

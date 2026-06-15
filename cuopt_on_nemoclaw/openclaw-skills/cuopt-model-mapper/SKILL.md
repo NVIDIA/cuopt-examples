@@ -1,7 +1,14 @@
 ---
 name: cuopt-model-mapper
-summary: Convert an interpreted optimization problem directly into cuOpt-native model construction for the fast path, asking only the minimum clarifying questions needed for a valid solve.
-description: Use after optimization intent and basic data interpretation are established, when the goal is to solve quickly by mapping data directly into cuOpt rather than building a replayable intermediate artifact.
+version: "26.06.01"
+description: Map interpreted optimization problems into cuOpt-native models for the fast path with minimal clarifying questions.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - nemoclaw
+    - orchestration
 origin: skill-evolution
 ---
 
@@ -42,7 +49,7 @@ For the fast path, map directly from the interpreted data into cuOpt structures.
 Do not introduce a replayable intermediate artifact unless the user asks for replayability, auditability, export, or reuse.
 
 **In NemoClaw sandbox:** before building the cuOpt model, confirm
-`cuopt-first` gates completed (probe → `CUOPT_REMOTE_*` → smoke test).
+`cuopt-sandbox` gates completed (probe → `CUOPT_REMOTE_*` → smoke test).
 Do not build a parallel heuristic assigner "first" — cuOpt is the first
 and only solver for assignments/schedules.
 
@@ -59,6 +66,12 @@ Before building, confirm internally:
 Use the unresolved blocker list from ingestion as the starting point; do not reopen broad exploratory questioning unless the current interpretation is clearly inconsistent.
 
 If one non-retrievable modeling choice would change the meaning of the solve, ask exactly one concise blocking question.
+
+**Scheduling with no stated objective:** Feasibility (no double-booking,
+respect unavailability, assign every item) belongs in **hard constraints**.
+Do not deliver a greedy feasible schedule first. Ask one objective
+question if needed, or state a default secondary objective (e.g. balance
+slot times, minimize penalty slacks), then solve with cuOpt.
 
 Examples:
 - **"Do these production quantities need to be whole numbers?"**
@@ -195,21 +208,21 @@ If relevant, also mention which constraint or resource appears to be most limiti
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python` (or `cuopt-numerical-optimization-api-cli` for MPS inputs)
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
     before any gRPC Python solve
 
 - For QP:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python`
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
     before any gRPC Python solve
 
 - For routing:
   - use `routing-formulation`
   - then use `cuopt-routing-api-python`
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` then `cuopt-remote-env`
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
     before any gRPC Python solve
 
 ## Success criterion

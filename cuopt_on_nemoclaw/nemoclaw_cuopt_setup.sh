@@ -27,7 +27,9 @@
 #   install-activation [NAME]  Re-stamp the cuOpt venv activation file
 #                              (/sandbox/.bash_profile). Use after changing
 #                              CUOPT_HOST, CUOPT_PORT, or CUOPT_VENV.
-#   install-skill [NAME]       Upload the cuOpt skill into the sandbox.
+#   install-skill [NAME]       Upload the cuOpt skill into the sandbox and append
+#                              tool-search file-access notes to workspace TOOLS.md
+#                              when not already present.
 #   cache-wheels [NAME]        Snapshot a sandbox's already-installed wheels
 #                              into $CUOPT_WHEEL_CACHE. NAME must already have
 #                              cuOpt installed (run `add` or `install` against
@@ -100,11 +102,10 @@
 #   the installed tools differ (non-fatal). To install the exact tested
 #   NemoClaw build:
 #
-#     NEMOCLAW_INSTALL_TAG=v0.0.55 \
+#     NEMOCLAW_INSTALL_TAG=v0.0.64 \
 #       curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
-#   The public installer defaults to the `lkg` ref, which currently matches
-#   v0.0.55; use the tag above to pin even after `lkg` moves forward.
+#   The public installer defaults to the `lkg` ref, which moves.
 #
 #   Silence the banner with NEMOCLAW_VERSION_CHECK=0.
 # =============================================================================
@@ -179,14 +180,13 @@ CUOPT_TEST_SANDBOX_GRPC=""
 #
 # To install the exact tested NemoClaw build (openshell is bundled with the
 # NemoClaw release this script was verified against):
-#   NEMOCLAW_INSTALL_TAG=v0.0.55 \
+#   NEMOCLAW_INSTALL_TAG=v0.0.64 \
 #     curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
-# The public installer defaults to `lkg`, which currently resolves to the same
-# commit as v0.0.55. Pin the tag if you need reproducibility after lkg moves.
+# The public installer defaults to the `lkg` ref, which moves.
 #
 # Silence the banner with NEMOCLAW_VERSION_CHECK=0.
-TESTED_NEMOCLAW_VERSION="0.0.55"
+TESTED_NEMOCLAW_VERSION="0.0.64"
 TESTED_OPENSHELL_VERSION="0.0.44"
 
 # ── NemoClaw / OpenShell version compatibility check ─────────────
@@ -1535,6 +1535,144 @@ upload_sandbox_file() {
   return 0
 }
 
+# ── install_workspace_tools_md (helper) ───────────────────────────
+# Append a managed block to /sandbox/.openclaw/workspace/TOOLS.md when OpenClaw
+# compact tool-search mode is active (tools.toolSearch not false). Skips — and
+# strips any existing block — when direct tools are enabled. OpenClaw injects
+# TOOLS.md on every turn via Project Context.
+install_workspace_tools_md() {
+  local sandbox="$1"
+  local container
+  if ! container=$(find_sandbox_container "$sandbox"); then
+    echo "  warning: cannot update TOOLS.md (sandbox container not running)" >&2
+    return 1
+  fi
+
+  local inner_script
+  inner_script=$(cat <<'INNER_EOF'
+set -eu
+tools_md=/sandbox/.openclaw/workspace/TOOLS.md
+begin='# >> cuopt tool help'
+end='# << cuopt tool help'
+
+tool_mode=$(python3 - <<'PY'
+import json
+
+cfg_path = "/sandbox/.openclaw/openclaw.json"
+try:
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    print("compact")
+    raise SystemExit(0)
+
+ts = (cfg.get("tools") or {}).get("toolSearch")
+if ts is False:
+    print("direct")
+elif isinstance(ts, dict) and ts.get("enabled") is False:
+    print("direct")
+else:
+    print("compact")
+PY
+)
+
+write_managed_block() {
+  cat <<'BLOCK_EOF'
+# >> cuopt tool help
+With only `tool_search_code` exposed, `read` and `exec` still exist - reach them via `openclaw.tools.search`, then `describe`, then `call` inside a `tool_search_code` run. Try that before asking the user to paste file contents.
+`read` requires an exact path (no globs). Use the path the user gave, or run `find` through `exec` if you need to discover files under `/sandbox`.
+# << cuopt tool help
+BLOCK_EOF
+}
+
+# Drop trailing blank lines so strip+re-append does not accumulate spacing.
+trim_trailing_blank_lines() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  tmp="${file}.trim.$$"
+  awk '
+    { lines[NR] = $0 }
+    END {
+      n = NR
+      while (n > 0 && lines[n] == "") {
+        n--
+      }
+      for (i = 1; i <= n; i++) {
+        print lines[i]
+      }
+    }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
+append_managed_block() {
+  trim_trailing_blank_lines "$tools_md"
+  if [ -s "$tools_md" ]; then
+    printf '\n' >> "$tools_md"
+  fi
+  write_managed_block >> "$tools_md"
+}
+
+mkdir -p /sandbox/.openclaw/workspace
+if [ -f "$tools_md" ]; then
+  tmp="${tools_md}.tmp.$$"
+  awk -v begin="$begin" -v end="$end" '
+    $0 == begin { skip=1; next }
+    skip && $0 == end { skip=0; next }
+    !skip { print }
+  ' "$tools_md" > "$tmp"
+  mv "$tmp" "$tools_md"
+  trim_trailing_blank_lines "$tools_md"
+fi
+
+if [ "$tool_mode" = "direct" ]; then
+  echo skipped-direct
+  exit 0
+fi
+
+if [ ! -f "$tools_md" ]; then
+  cat > "$tools_md" <<'HEADER_EOF'
+# TOOLS.md - Local Notes
+
+HEADER_EOF
+fi
+
+append_managed_block
+echo updated
+INNER_EOF
+)
+
+  local inner_b64
+  inner_b64=$(printf '%s' "$inner_script" | base64 -w 0)
+
+  local err_log result
+  err_log=$(mktemp)
+  result=$(sandbox_exec "$sandbox" \
+       sh -c "echo '$inner_b64' | base64 -d | sh" 2>"$err_log") || {
+    echo "  warning: could not update TOOLS.md in container '$container'" >&2
+    if [[ -s "$err_log" ]]; then
+      sed 's/^/    /' "$err_log" >&2
+    fi
+    rm -f "$err_log"
+    return 1
+  }
+  rm -f "$err_log"
+
+  case "$result" in
+    updated)
+      echo "  TOOLS.md cuOpt tool help block updated"
+      ;;
+    skipped-direct)
+      echo "  TOOLS.md cuOpt tool help skipped (tools.toolSearch is false)"
+      ;;
+    *)
+      echo "  warning: unexpected TOOLS.md update result: $result" >&2
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 # ── install-skill ─────────────────────────────────────────────────
 cmd_install_skill() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
@@ -1677,40 +1815,33 @@ cmd_install_skill() {
   guardrail_content="$(cat <<'GUARDRAIL'
 ---
 name: cuopt-setup
-description: "Read this FIRST in every sandbox session. Tool catalog: if you only see tool_search/tool_describe/tool_call, run tool_search (query read or shell) — read/write/exec are NOT missing. cuOpt path: read /sandbox/.openclaw/skills/cuopt-first/SKILL.md then cuopt-sandbox. MILP imports: cuopt.linear_programming.problem (NOT from cuopt import milp) — see cuopt-python-api. If ~ paths fail, use absolute paths below."
+description: "NemoClaw cuOpt sandbox entry — probe/smoke before schedule output; absolute skill paths under /sandbox/.openclaw/skills/."
 ---
 
-# cuOpt sandbox — tools + skill paths
+# cuOpt sandbox — skill paths
 
-## Tools (compact catalog)
+## Schedule / assignment workflow
 
-NemoClaw hides `read`, `write`, `exec` behind `tool_search` /
-`tool_describe` / `tool_call`. **Do not claim files are unreadable.**
-Run `tool_call` → `tool_search` with `query: "read"` or `"shell"`,
-then `tool_call` the real tool. Full guide:
-`/sandbox/.openclaw/skills/always-tool-discovery/SKILL.md`
+Read (in order):
+
+    /sandbox/.openclaw/skills/optimization-from-data-orchestrator/SKILL.md
+    /sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md
+
+Routing + cuOpt-first rules:
+`/sandbox/.openclaw/skills/cuopt-sandbox/references/activation.md`
 
 ## cuOpt skills
 
-The cuopt-sandbox skill (sandbox setup, networking, venv) is installed at:
-
     /sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md
 
-Start with `/sandbox/.openclaw/skills/cuopt-first/SKILL.md` for optimization
-tasks. **Python MILP/LP imports:** `/sandbox/.openclaw/skills/cuopt-python-api/SKILL.md`
-(never `from cuopt import milp`). Read cuopt-sandbox for full wiring, then sibling skills in the same
-directory (cuopt-user-rules, cuopt-numerical-optimization-api-python, etc.).
+**Python MILP/LP imports:**
+`/sandbox/.openclaw/skills/cuopt-sandbox/references/python-imports.md`
+(use `cuopt.linear_programming.problem`, not `from cuopt import milp`).
 
 ## Why this guardrail exists
 
-OpenClaw compacts skill paths to `~/…` in the system prompt. When you try
-to read `~/.openclaw/skills/cuopt-sandbox/SKILL.md`, the `~` may expand to
-`/root/` or another directory that is not readable. If that happens:
-
-1. Do NOT give up on using cuOpt.
-2. Read the skill from the absolute path above.
-3. Also check `/sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md` (symlink
-   to the same file).
+OpenClaw compacts skill paths to `~/…` in the system prompt. Use absolute
+paths under `/sandbox/.openclaw/skills/` when `~` paths fail.
 GUARDRAIL
 )"
 
@@ -1800,6 +1931,9 @@ print("    skills.load.extraDirs=" + json.dumps(existing))
     echo "           in 'openclaw skills list' or the agent's <available_skills> prompt" >&2
     echo "           until skills.load.extraDirs includes /sandbox/.openclaw/skills" >&2
   fi
+
+  install_workspace_tools_md "$sandbox" \
+  || echo "  warning: could not update workspace TOOLS.md (non-fatal)" >&2
 
   echo "Skills installed."
 
