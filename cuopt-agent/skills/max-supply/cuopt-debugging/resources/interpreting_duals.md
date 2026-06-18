@@ -1,4 +1,4 @@
-# Interpreting Duals: Marginal Values, Reduced Costs, and Slack
+# Interpreting Dual Values, Reduced Costs, and Slack
 
 `diagnostic_snippets.md` shows how to *read* `DualValue`, `ReducedCost`, and `Slack` off a solved
 problem. This explains what they *mean* for the decision — turning solver output into "which
@@ -14,11 +14,11 @@ closest near-miss."
 > with the bound relaxed by one unit and compare objectives), or read duals from the **LP
 > relaxation**.
 
-## Constraint dual — the marginal value of relaxing a limit
+## Constraint dual value — the marginal value of relaxing a limit
 
 A constraint's `DualValue` is the **sensitivity** of the optimum to that constraint: the change in
 the optimal objective per unit relaxation of its right-hand side, holding everything else fixed —
-the marginal value of one more unit of that limit (classically, its *shadow price*).
+the marginal value of one more unit of that limit.
 
 - A **binding** constraint (`Slack ≈ 0`) carries a nonzero dual — it is actively limiting
   the objective. A **slack** constraint (`Slack > 0`) prices to ~0: relaxing it changes
