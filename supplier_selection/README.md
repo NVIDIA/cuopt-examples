@@ -1,6 +1,6 @@
 # Supplier Sourcing
 
-This folder demonstrates how to use NVIDIA cuOpt to solve multi-objective supplier sourcing problems with the cuOpt Python API.
+This folder contains examples of how to use NVIDIA cuOpt to solve supplier sourcing problems. The notebooks solve supplier sourcing problems using the cuOpt Python API.
 
 ## Examples
 
@@ -12,5 +12,3 @@ The notebook splits one order across suppliers when reliability and diversificat
 - Traces the **concentration vs. reliability** frontier as an ε-constraint sweep (sweep the reliability floor).
 - Reads each point's **dual**: the sensitivity d(concentration)/d(reliability), from cuOpt's barrier (interior-point) solver — the diversification given up per point of reliability.
 - Builds the dense concentration quadratic from the matrix directly (`QuadraticExpression(qmatrix=...)`) rather than term by term.
-
-This mirrors the ε-constraint + duals recipe in [`portfolio_optimization`](../portfolio_optimization/) on a procurement decision; it is also packaged as the `cuopt-multi-objective-exploration` skill.
