@@ -10,5 +10,5 @@ The notebook splits one order across suppliers when reliability and diversificat
 
 - Minimizes **concentration risk** (a quadratic `wᵀ C w` over the allocation, high within-region correlation) subject to a fully-allocated order, a per-supplier cap, and a unit-cost budget.
 - Traces the **concentration vs. reliability** frontier as an ε-constraint sweep (sweep the reliability floor).
-- Reads each point's **dual**: the sensitivity d(concentration)/d(reliability), from cuOpt's barrier (interior-point) solver — the diversification given up per point of reliability.
+- Reads each point's **dual**: the sensitivity d(concentration)/d(reliability) — the diversification given up per point of reliability.
 - Builds the dense concentration quadratic from the matrix directly (`QuadraticExpression(qmatrix=...)`) rather than term by term.
