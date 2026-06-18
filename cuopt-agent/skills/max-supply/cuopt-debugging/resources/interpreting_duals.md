@@ -1,23 +1,27 @@
-# Interpreting Duals: Shadow Prices, Reduced Costs, and Slack
+# Interpreting Duals: Marginal Values, Reduced Costs, and Slack
 
 `diagnostic_snippets.md` shows how to *read* `DualValue`, `ReducedCost`, and `Slack` off a solved
 problem. This explains what they *mean* for the decision — turning solver output into "which
 constraint is the binding bottleneck, what relaxing it is worth, and which unused option is the
 closest near-miss."
 
-> **LP / QP only.** Duals and reduced costs exist for **continuous** (LP / QP) solutions. An
-> integer model (MILP) — **including the max-supply model** — returns no usable duals;
-> `DualValue` / `ReducedCost` are not meaningful there. For a MILP, get the marginal value by
-> **differencing adjacent solves** (re-solve with the bound relaxed by one unit and compare
-> objectives), or read duals from the **LP relaxation**.
+> **Continuous models, linear constraints.** Duals and reduced costs exist for **continuous**
+> (LP / QP) solutions off **linear** constraints. Two cases return none: an **integer model
+> (MILP)** — **including the max-supply model** — has no usable duals, and a **quadratic
+> _constraint_** makes cuOpt NaN-fill every dual (a quadratic _objective_ is fine — it is a
+> quadratic _constraint_ that breaks them). `DualValue` / `ReducedCost` are not meaningful in
+> either case. For a MILP, get the marginal value by **differencing adjacent solves** (re-solve
+> with the bound relaxed by one unit and compare objectives), or read duals from the **LP
+> relaxation**.
 
-## Shadow price — the value of relaxing a constraint
+## Constraint dual — the marginal value of relaxing a limit
 
-A constraint's `DualValue` is its **shadow price**: the change in the optimal objective per unit
-relaxation of that constraint's right-hand side, holding everything else fixed.
+A constraint's `DualValue` is the **sensitivity** of the optimum to that constraint: the change in
+the optimal objective per unit relaxation of its right-hand side, holding everything else fixed —
+the marginal value of one more unit of that limit (classically, its *shadow price*).
 
-- A **binding** constraint (`Slack ≈ 0`) carries a nonzero shadow price — it is actively limiting
-  the objective. A **slack** constraint (`Slack > 0`) has a shadow price of ~0: relaxing it changes
+- A **binding** constraint (`Slack ≈ 0`) carries a nonzero dual — it is actively limiting
+  the objective. A **slack** constraint (`Slack > 0`) prices to ~0: relaxing it changes
   nothing, because it is not the bottleneck.
 - **Rank the binding constraints by `|DualValue|`** → the largest is the highest-leverage limit to
   renegotiate: "relax this by one unit and the objective improves by `DualValue`."
@@ -26,11 +30,11 @@ relaxation of that constraint's right-hand side, holding everything else fixed.
 # Which constraints bind, and what each is worth (LP / QP only):
 binding = [(c.ConstraintName, c.DualValue) for c in problem.getConstraints() if abs(c.Slack) < 1e-6]
 for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
-    print(f"{name}: shadow price {dual:+.4g}  (objective change per unit relaxed)")
+    print(f"{name}: dual {dual:+.4g}  (objective change per unit relaxed)")
 ```
 
 In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
-and the **per-period supply limits** — the shadow price tells you which machine-hour (e.g. a tight
+and the **per-period supply limits** — the dual tells you which machine-hour (e.g. a tight
 `RES2` period) or which material is the binding bottleneck, and what one more hour or unit of supply
 is worth in finished-goods terms. (Read it from the LP relaxation, since the model itself is a MILP.)
 
@@ -55,7 +59,7 @@ for name, rc in sorted(near, key=lambda kv: abs(kv[1])):
 
 Two questions answered straight from the duals:
 
-- **Where to invest / what to renegotiate** — the binding constraint with the largest shadow price.
+- **Where to invest / what to renegotiate** — the binding constraint with the largest dual.
   Lift that limit and you gain the most per unit.
 - **The closest near-miss** — the unused option with the smallest reduced cost. The first thing that
   would enter the plan if the economics shift.

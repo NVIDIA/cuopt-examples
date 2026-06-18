@@ -201,9 +201,9 @@ See [resources/diagnostic_snippets.md](resources/diagnostic_snippets.md) for cop
 - Constraint analysis
 - Memory and performance checks
 
-## Interpreting Duals (Shadow Prices & Reduced Costs)
+## Interpreting Duals (Marginal Values & Reduced Costs)
 
-When an LP/QP solve returns dual values and you need the *decision* read — which constraint is the binding bottleneck, what relaxing it is worth, and which unused option is the closest near-miss — see [resources/interpreting_duals.md](resources/interpreting_duals.md). (Integer models / MILP return no usable duals; that reference covers the MILP fallback.)
+When an LP/QP solve returns dual values and you need the *decision* read — which constraint is the binding bottleneck, what relaxing it is worth, and which unused option is the closest near-miss — see [resources/interpreting_duals.md](resources/interpreting_duals.md). (Integer models / MILP — and quadratic *constraints* — return no usable duals; that reference covers the fallback.)
 
 ## When to Escalate
 
