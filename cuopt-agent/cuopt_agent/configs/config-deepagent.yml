@@ -41,7 +41,7 @@ general:
 llms:
   cuopt_llm:
     _type: nim
-    model: minimaxai/minimax-m2.5
+    model: minimaxai/minimax-m3
     api_key: ${NVIDIA_API_KEY}
     base_url: https://integrate.api.nvidia.com/v1/
     max_tokens: 16384

@@ -42,7 +42,7 @@ The cuOpt Agent is a reference optimization assistant that translates natural-la
 | [NVIDIA NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/) | Agent framework and serving |
 | [NVIDIA cuOpt](https://developer.nvidia.com/cuopt) | GPU-accelerated LP/MILP solver |
 | [LangChain Deep Agents](https://www.langchain.com/) | Multi-step agent workflow |
-| [minimaxai/minimax-m2.5](https://build.nvidia.com/) (via NIM) | LLM for agent reasoning |
+| [minimaxai/minimax-m3](https://build.nvidia.com/) (via NIM) | LLM for agent reasoning |
 | [Phoenix](https://github.com/Arize-ai/phoenix) | OpenTelemetry tracing |
 | [LangSmith](https://smith.langchain.com/) (optional) | Agent tracing and observability |
 | [NAT UI](external/nat-ui/) | Chat web interface |
