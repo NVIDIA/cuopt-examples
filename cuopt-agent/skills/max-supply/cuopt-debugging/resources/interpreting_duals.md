@@ -68,6 +68,21 @@ Report both in decision language, not raw numbers: "the *RES2 machine-hour cap* 
 bottleneck — each extra hour is worth ~`X` finished units; *material Y* is the closest unused option,
 ~`Z` away from being worth procuring."
 
+## When a dual is soft (degeneracy)
+
+A dual is exact for the basis the solver returned, but at a **degenerate** optimum — many
+constraints binding at once (a lot of `Slack ≈ 0`) — that basis is one of several, so the dual is
+one-sided and non-unique. It reads most precise exactly where it is least reliable, the common case
+on large LPs.
+
+- Report the **ranking** of binding constraints as solid; present a single dual as a *direction*
+  ("this is the lever to renegotiate"), not a hard per-unit rate.
+- Confirm any rate you quote with the one-unit re-solve (below): if the objective change does not
+  match `DualValue`, the optimum is degenerate — give the direction, not the number.
+
+An LP / simplex effect; a strictly convex QP (quadratic _objective_, not constraint) has unique
+duals, so its read stays firm.
+
 ## Sign conventions
 
 `DualValue` / `ReducedCost` signs depend on the constraint sense and the objective direction. Read
