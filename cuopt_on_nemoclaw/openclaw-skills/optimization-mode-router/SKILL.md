@@ -1,7 +1,15 @@
 ---
 name: optimization-mode-router
-summary: Decide whether to default to fast direct-to-cuOpt mode or ask whether the user wants replayable/auditable mode for reruns, review, export, or audit.
-description: Use when a user asks a question that may be answered by solving an optimization problem from uploaded or provided data, and you need to decide whether to proceed directly to cuOpt or preserve a structured reusable model artifact.
+version: "26.06.01"
+description: Choose fast direct-to-cuOpt solve versus replayable or auditable model artifact mode.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - nemoclaw
+    - orchestration
+origin: skill-evolution
 ---
 
 # Optimization Mode Router
@@ -32,8 +40,14 @@ Read this skill when all of the following are true:
 ## Default behavior
 
 - Default to **Fast mode**.
+- Default to **direct cuOpt solve** for one-off requests from uploaded CSVs
+  (schedule, assignment, allocation, routing) — proceed to
+  `cuopt-model-mapper` without asking fast vs replayable unless the user
+  signals audit/export/rerun.
 - Do **not** ask about replayability/auditability unless there is a real signal that it matters.
 - Avoid turning a straightforward optimization request into a heavy upfront questionnaire.
+- **NemoClaw sandbox:** Fast mode means cuOpt after `cuopt-sandbox` gates —
+  never a custom greedy/heuristic builder as the solve path.
 
 ## Two modes
 
@@ -120,17 +134,20 @@ After selecting a mode, hand off based on problem type:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python` (or
     `cuopt-numerical-optimization-api-cli` for MPS inputs)
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
+    before any gRPC Python solve
 
 - If the request is QP:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python`
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
+    before any gRPC Python solve
 
 - If the request is routing (VRP / TSP / PDP):
   - use `routing-formulation`
   - then use `cuopt-routing-api-python`
-  - in sandbox contexts, follow `cuopt-sandbox` first when required
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
+    before any gRPC Python solve
 
 - If the user is asking about server usage or deployment rather than solving a model directly:
   - use `cuopt-server-common` or `cuopt-server-api-python` as appropriate

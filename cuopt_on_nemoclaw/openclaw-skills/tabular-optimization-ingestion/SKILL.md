@@ -1,7 +1,14 @@
 ---
 name: tabular-optimization-ingestion
-summary: Inspect uploaded or provided tabular data, infer likely optimization structure, and identify the smallest set of clarifications needed before building a cuOpt model.
-description: Use when a user provides CSV, Excel, JSON-like tables, or similar structured data and asks a question that may become an LP, MILP, QP, or routing problem.
+version: "26.06.01"
+description: Infer optimization structure from uploaded tables and identify minimal clarifications before cuOpt modeling.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - nemoclaw
+    - orchestration
 origin: skill-evolution
 ---
 
@@ -12,6 +19,12 @@ Use this skill when the user provides raw or semi-structured data and asks a que
 The purpose of this skill is to bridge the gap between messy uploaded data and solver-ready model construction.
 
 This skill does **not** solve the optimization problem itself. It inspects the data, infers likely modeling roles, and identifies what still needs clarification.
+
+**It does not authorize heuristic, greedy, or backtracking schedules as
+answers.** In the NemoClaw sandbox, read `cuopt-sandbox`: the first solver
+that produces assignments or a schedule must be cuOpt after probe → env →
+smoke gates pass. Ingestion output is a modeling interpretation (entities,
+objective fields, constraints) — never a completed plan.
 
 This skill refines the optimization interpretation using the uploaded data; it does not replace the earlier intent decision unless the data clearly contradicts it.
 
@@ -144,7 +157,6 @@ Examples:
 - Are demands mandatory or forecast-only?
 - Must decisions be integers?
 - Are these time windows hard constraints?
-- Is this travel matrix symmetric?
 - Can unmet demand be allowed with penalty?
 - Is profit net profit or revenue only?
 
@@ -232,7 +244,22 @@ Likely interpretation:
 - travel table defines movement cost/time
 - likely problem family = routing
 
-### Example 3: historical transaction table
+### Example 3: time-slot / resource assignment (scheduling MILP)
+
+Files include patterns such as:
+- `games.csv` or `jobs.csv` — items to place (events, tasks, orders)
+- `time_slots.csv` or `shifts.csv` — when placement can occur
+- `courts.csv`, `machines.csv`, or `rooms.csv` — resources
+- `teams.csv` or `workers.csv` — entities tied to shared agents (coaches, operators)
+- `*_unavailability.csv` — blocked (resource, slot) or (agent, slot) pairs
+
+Likely interpretation:
+- decision = assign each item to a (slot, resource) or similar binary/integer placement
+- hard constraints = no double-booking, unavailability, capacity, one game per team per slot
+- likely problem family = **MILP** (even if user only says "build a schedule" or "valid plan")
+- **NemoClaw:** read `optimization-from-data-orchestrator` + `cuopt-sandbox` before any custom scheduler code
+
+### Example 4: historical transaction table
 File includes:
 - `sales_history.csv` with `order_id`, `date`, `region`, `revenue`, `units_sold`
 
