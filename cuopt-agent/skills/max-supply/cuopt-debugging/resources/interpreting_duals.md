@@ -16,9 +16,10 @@ closest near-miss."
 
 ## Constraint dual value — the marginal value of relaxing a limit
 
-A constraint's `DualValue` is the **sensitivity** of the optimum to that constraint: the change in
-the optimal objective per unit relaxation of its right-hand side, holding everything else fixed —
-the marginal value of one more unit of that limit.
+A constraint's `DualValue` is the **sensitivity** of the optimum to that constraint: the marginal
+value of one more unit of that limit, holding everything else fixed. At a non-degenerate optimum
+that is the exact change in objective per unit relaxed; under **degeneracy** (common in practice) it
+is one-sided, so read it as a direction (see *When a dual is soft*).
 
 - A **binding** constraint (`Slack ≈ 0`) carries a nonzero dual — it is actively limiting
   the objective. A **slack** constraint (`Slack > 0`) prices to ~0: relaxing it changes
