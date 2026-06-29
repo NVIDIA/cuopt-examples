@@ -25,7 +25,8 @@ is one-sided, so read it as a direction (see *When a dual is soft*).
   the objective. A **slack** constraint (`Slack > 0`) prices to ~0: relaxing it changes
   nothing, because it is not the bottleneck.
 - **Rank the binding constraints by `|DualValue|`** → the largest is the highest-leverage limit to
-  renegotiate: "relax this by one unit and the objective improves by `DualValue`."
+  renegotiate. The *ranking* is the robust read; a single dual is a direction, not a guaranteed
+  per-unit rate (see *When a dual is soft*).
 
 ```python
 # Which constraints bind, and what each is worth (LP / QP only):
