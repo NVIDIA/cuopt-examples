@@ -725,7 +725,7 @@ print_service_status_summary() {
   if [[ "$test_rc" -eq 2 ]]; then
     echo "  No cuOpt service is listening on the host. Start one, then retry:"
     echo "      ./nemoclaw_cuopt_setup.sh test ${sandbox}"
-    echo "  See cuopt-examples/cuopt_on_nemoclaw/SETUP.md > Starting the"
+    echo "  See cuopt-examples/cuopt_on_nemoclaw/README.md > Starting the"
     echo "  cuOpt server for the supported launch commands."
   else
     echo "  Common causes for 'unreachable' on a listening service:"
