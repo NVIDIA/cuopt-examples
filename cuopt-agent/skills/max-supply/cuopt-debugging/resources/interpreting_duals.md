@@ -24,7 +24,7 @@ is one-sided, so read it as a direction (see *When a dual is soft*).
 - The implication runs **one way**: a **slack** constraint (`Slack > 0`) always prices to ~0 —
   relaxing it changes nothing, because it is not the bottleneck. But `Slack ≈ 0` does **not**
   guarantee a nonzero dual: a binding constraint can still price to 0 (a form of degeneracy — see
-  *When a dual is soft*). A nonzero dual means binding; binding does not mean a nonzero dual.
+  *When a dual is soft*).
 - **Rank the binding constraints by `|DualValue|`** → the largest is the highest-leverage limit to
   renegotiate. The *ranking* is the robust read; a single dual is a direction, not a guaranteed
   per-unit rate (see *When a dual is soft*). One catch: a dual is objective-units **per unit of
@@ -34,16 +34,18 @@ is one-sided, so read it as a direction (see *When a dual is soft*).
   of a 1% relaxation (`|DualValue| × 0.01 × |RHS|`).
 
 ```python
-# Which constraints bind, and what each is worth (LP / QP only):
+# Which constraints bind, and what each is worth (LP / QP only).
+# The |dual| ranking is meaningful within comparable-unit constraints:
 binding = [(c.ConstraintName, c.DualValue) for c in problem.getConstraints() if abs(c.Slack) < 1e-6]
 for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
     print(f"{name}: dual {dual:+.4g}  (objective change per unit relaxed)")
 ```
 
 In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
-and the **per-period supply limits** — the dual tells you which machine-hour (e.g. a tight
-`RES2` period) or which material is the binding bottleneck, and what one more hour or unit of supply
-is worth in finished-goods terms. (Read it from the LP relaxation, since the model itself is a MILP.)
+and the **per-period supply limits** — the dual prices each one: what one more hour of a tight
+resource period (e.g. `RES2`), or one more unit of a material's supply, is worth in finished-goods
+terms. Hour-caps rank against hour-caps and supply limits against supply limits; across the two,
+convert to a common scale first. (Read it from the LP relaxation, since the model itself is a MILP.)
 
 ## Reduced cost — how far an unused option is from entering
 
@@ -58,21 +60,24 @@ coefficient must improve before it would enter the optimal solution. It is the *
   of its own objective coefficient ("needs a 3% price move" vs "needs a 40% one").
 
 ```python
-# Unused options ranked by how close they are to entering (LP / QP only):
+# Unused options ranked by how close they are to entering (LP / QP only).
+# Compare |reduced cost| within comparable-unit variables:
 near = [(v.VariableName, v.ReducedCost) for v in problem.getVariables()
         if abs(v.Value) < 1e-6 and abs(v.ReducedCost) > 1e-9]
 for name, rc in sorted(near, key=lambda kv: abs(kv[1])):
-    print(f"{name}: reduced cost {rc:+.4g}  (improve its coefficient by ~{abs(rc):.4g} to use it)")
+    print(f"{name}: reduced cost {rc:+.4g}  (~{abs(rc):.4g} coefficient improvement before it could enter)")
 ```
 
 ## The decision read
 
 Two questions answered straight from the duals:
 
-- **Where to invest / what to renegotiate** — the binding constraint with the largest dual.
-  Lift that limit and you gain the most per unit.
-- **The closest near-miss** — the unused option with the smallest reduced cost. The first thing that
-  would enter the plan if the economics shift.
+- **Where to invest / what to renegotiate** — the binding constraint with the largest dual among
+  comparable-unit limits (or after the common-scale conversion above). Lift that limit and you gain
+  the most per unit.
+- **The closest near-miss** — the unused option with the smallest reduced cost, compared in like
+  units or as a fraction of its own coefficient. The first thing that would enter the plan if the
+  economics shift.
 
 Report both in decision language, not raw numbers: "the *RES2 machine-hour cap* is the binding
 bottleneck — each extra hour is worth ~`X` finished units; *material Y* is the closest unused option,
@@ -91,17 +96,19 @@ convergence tolerance, with no basis behind them. Those duals get the same treat
 direction, not exact rates, and at-bound reduced costs are not the crisp zero / nonzero split a
 simplex basis gives.
 
-- Report the **ranking** of binding constraints as solid; present a single dual as a *direction*
-  ("this is the lever to renegotiate"), not a hard per-unit rate.
+- Report the **ranking** of binding constraints (within comparable units) as solid; present a
+  single dual as a *direction* ("this is the lever to renegotiate"), not a hard per-unit rate.
 - Confirm any rate you quote with the one-unit re-solve (below): if the objective change does not
   match `DualValue`, the optimum is degenerate — give the direction, not the number.
 
-An LP / simplex effect; a strictly convex QP (quadratic _objective_, not constraint) has unique
-duals, so its read stays firm.
+An LP / simplex effect; a strictly convex QP (quadratic _objective_, not constraint) has a unique
+optimum and its duals read firmer — though degenerate active constraints can still make the
+multipliers non-unique, so the re-solve check stays worthwhile.
 
 ## Sign conventions
 
 `DualValue` / `ReducedCost` signs depend on the constraint sense and the objective direction. Read
 the **magnitude** for leverage ("how much per unit") and the **constraint sense** for direction
 (relaxing a `<=` capacity raises a maximize objective). When unsure, confirm with a one-unit
-re-solve: on an LP / QP the objective difference matches the dual to solver tolerance.
+re-solve: at a non-degenerate optimum the objective difference matches the dual to solver
+tolerance (when it does not, see *When a dual is soft*).
