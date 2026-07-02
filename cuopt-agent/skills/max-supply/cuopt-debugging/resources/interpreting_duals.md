@@ -30,8 +30,9 @@ finite relaxation, difference two solves.
 - **Rank the binding constraints by `|DualValue|`** → a shortlist of the highest-leverage limits to
   renegotiate. Treat it as a shortlist, not a verdict: under degeneracy the dual solution itself is
   non-unique, so even the ordering can shift between equally optimal solves — confirm the top
-  lever with a differencing re-solve (see *When a dual is soft*). One catch: a dual is objective-units **per unit of
-  that constraint**, so the raw ranking only makes sense across constraints in **comparable units**
+  lever with a differencing re-solve (see *When a dual is soft*). One catch: a dual is
+  objective-units **per unit of that constraint**, so the raw ranking only makes sense across
+  constraints in **comparable units**
   (hours vs hours). To rank a machine-hour cap against a material-tonnage limit, put them on a
   common scale first — e.g. multiply each dual by a realistic relaxation step, or compare the value
   of a 1% relaxation (`|DualValue| × 0.01 × |RHS|`).
@@ -66,8 +67,8 @@ It is the **near-miss** signal.
   it with no coefficient change at all (the mirror of a binding constraint with a zero dual).
 - Among the variables left at `0` with a clearly nonzero reduced cost, the one with the
   **smallest `|ReducedCost|`** is closest to becoming worthwhile — the option to watch if a cost
-  or yield shifts slightly. Same units catch as
-  the dual ranking: a reduced cost is objective-units per unit of *that variable*, so sort only
+  or yield shifts slightly. Same units catch as the dual ranking: a reduced cost is
+  objective-units per unit of *that variable*, so sort only
   variables in comparable units against each other — or compare each `|ReducedCost|` as a fraction
   of its own objective coefficient ("needs a 3% price move" vs "needs a 40% one").
 
