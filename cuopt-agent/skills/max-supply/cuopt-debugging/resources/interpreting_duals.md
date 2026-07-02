@@ -50,12 +50,16 @@ pays off as it relaxes. Hour-caps rank against hour-caps and supply limits again
 across the two, convert to a common scale first. (The model itself is a MILP, so read this from the LP relaxation
 as a guide and difference two MILP solves for the real number.)
 
-## Reduced cost — how far an unused option is from entering
+## Reduced cost — how far an unused option is from being worth using
 
-A variable resting at a bound (often `0`) carries a `ReducedCost`: how much its objective
-coefficient must improve before it could enter the optimal solution. It is the **near-miss** signal.
+A variable resting at a bound (often `0`) carries a `ReducedCost`: improve its objective
+coefficient by more than `|ReducedCost|` and the current plan stops being optimal — using that
+variable starts to pay off; by less, and leaving it at its bound stays optimal. It is the
+**near-miss** signal.
 
 - A variable with `Value > 0` is already in the mix; its reduced cost is ~0.
+- A variable **at its bound** can also price to ~0 — degeneracy again: an alternative optimum uses
+  it with no coefficient change at all (the mirror of a binding constraint with a zero dual).
 - Among the variables left at `0`, the one with the **smallest `|ReducedCost|`** is closest to
   becoming worthwhile — the option to watch if a cost or yield shifts slightly. Same units catch as
   the dual ranking: a reduced cost is objective-units per unit of *that variable*, so sort only
@@ -63,12 +67,13 @@ coefficient must improve before it could enter the optimal solution. It is the *
   of its own objective coefficient ("needs a 3% price move" vs "needs a 40% one").
 
 ```python
-# Unused options ranked by how close they are to entering (LP / QP only).
+# Unused options ranked by how close they are to paying off (LP / QP only).
 # Compare |reduced cost| within comparable-unit variables:
-near = [(v.VariableName, v.ReducedCost) for v in problem.getVariables()
-        if abs(v.Value) < 1e-6 and abs(v.ReducedCost) > 1e-9]
+near = [(v.VariableName, v.ReducedCost) for v in problem.getVariables() if abs(v.Value) < 1e-6]
 for name, rc in sorted(near, key=lambda kv: abs(kv[1])):
-    print(f"{name}: reduced cost {rc:+.4g}  (~{abs(rc):.4g} coefficient improvement before it could enter)")
+    note = ("already interchangeable — degenerate" if abs(rc) < 1e-9
+            else f"~{abs(rc):.4g} coefficient improvement before it pays off")
+    print(f"{name}: reduced cost {rc:+.4g}  ({note})")
 ```
 
 ## The decision read
