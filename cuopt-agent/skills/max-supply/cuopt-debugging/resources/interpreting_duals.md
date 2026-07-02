@@ -21,12 +21,17 @@ value of one more unit of that limit, holding everything else fixed. At a non-de
 that is the exact change in objective per unit relaxed; under **degeneracy** (common in practice) it
 is one-sided, so read it as a direction (see *When a dual is soft*).
 
-- A **binding** constraint (`Slack ≈ 0`) carries a nonzero dual — it is actively limiting
-  the objective. A **slack** constraint (`Slack > 0`) prices to ~0: relaxing it changes
-  nothing, because it is not the bottleneck.
+- The implication runs **one way**: a **slack** constraint (`Slack > 0`) always prices to ~0 —
+  relaxing it changes nothing, because it is not the bottleneck. But `Slack ≈ 0` does **not**
+  guarantee a nonzero dual: a binding constraint can still price to 0 (a form of degeneracy — see
+  *When a dual is soft*). A nonzero dual means binding; binding does not mean a nonzero dual.
 - **Rank the binding constraints by `|DualValue|`** → the largest is the highest-leverage limit to
   renegotiate. The *ranking* is the robust read; a single dual is a direction, not a guaranteed
-  per-unit rate (see *When a dual is soft*).
+  per-unit rate (see *When a dual is soft*). One catch: a dual is objective-units **per unit of
+  that constraint**, so the raw ranking only makes sense across constraints in **comparable units**
+  (hours vs hours). To rank a machine-hour cap against a material-tonnage limit, put them on a
+  common scale first — e.g. multiply each dual by a realistic relaxation step, or compare the value
+  of a 1% relaxation (`|DualValue| × 0.01 × |RHS|`).
 
 ```python
 # Which constraints bind, and what each is worth (LP / QP only):
@@ -47,7 +52,10 @@ coefficient must improve before it would enter the optimal solution. It is the *
 
 - A variable with `Value > 0` is already in the mix; its reduced cost is ~0.
 - Among the variables left at `0`, the one with the **smallest `|ReducedCost|`** is closest to
-  becoming worthwhile — the option to watch if a cost or yield shifts slightly.
+  becoming worthwhile — the option to watch if a cost or yield shifts slightly. Same units catch as
+  the dual ranking: a reduced cost is objective-units per unit of *that variable*, so sort only
+  variables in comparable units against each other — or compare each `|ReducedCost|` as a fraction
+  of its own objective coefficient ("needs a 3% price move" vs "needs a 40% one").
 
 ```python
 # Unused options ranked by how close they are to entering (LP / QP only):
@@ -76,6 +84,12 @@ A dual is exact for the basis the solver returned, but at a **degenerate** optim
 constraints binding at once (a lot of `Slack ≈ 0`) — that basis is one of several, so the dual is
 one-sided and non-unique. It reads most precise exactly where it is least reliable, the common case
 on large LPs.
+
+Which solver ran matters too: cuOpt **often returns no basis at all** — the first-order **PDLP**
+path (common on large LPs, and one arm of the concurrent default) produces duals only to the
+convergence tolerance, with no basis behind them. Those duals get the same treatment: leverage and
+direction, not exact rates, and at-bound reduced costs are not the crisp zero / nonzero split a
+simplex basis gives.
 
 - Report the **ranking** of binding constraints as solid; present a single dual as a *direction*
   ("this is the lever to renegotiate"), not a hard per-unit rate.
