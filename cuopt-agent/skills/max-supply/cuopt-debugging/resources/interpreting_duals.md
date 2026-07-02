@@ -44,15 +44,15 @@ for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
 ```
 
 In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
-and the **per-period supply limits** — the dual prices each one: what one more hour of a tight
-resource period (e.g. `RES2`), or one more unit of a material's supply, is worth in finished-goods
-terms. Hour-caps rank against hour-caps and supply limits against supply limits; across the two,
+and the **per-period supply limits** — the dual prices each one: the marginal rate, in
+finished-goods terms, at which a tight resource period (e.g. `RES2`) or a material's supply limit
+pays off as it relaxes. Hour-caps rank against hour-caps and supply limits against supply limits; across the two,
 convert to a common scale first. (Read it from the LP relaxation, since the model itself is a MILP.)
 
 ## Reduced cost — how far an unused option is from entering
 
 A variable resting at a bound (often `0`) carries a `ReducedCost`: how much its objective
-coefficient must improve before it would enter the optimal solution. It is the **near-miss** signal.
+coefficient must improve before it could enter the optimal solution. It is the **near-miss** signal.
 
 - A variable with `Value > 0` is already in the mix; its reduced cost is ~0.
 - Among the variables left at `0`, the one with the **smallest `|ReducedCost|`** is closest to
@@ -103,7 +103,6 @@ simplex basis gives.
 - Quote a finite change only from a differencing re-solve: the dual is the rate at the current
   optimum, and the realized change over a step can differ from `dual × step` (the active set can
   change along the way, degenerate or not).
-
 
 ## Sign conventions
 
