@@ -18,16 +18,17 @@
 import argparse
 from pathlib import Path
 import json
-import cuopt_mps_parser
+from cuopt.linear_programming import DataModel
+from cuopt.linear_programming.io import ParseMps, toDict
 
 def _mps_parse(LP_problem_data, tolerances, time_limit, iteration_limit, no_var_names):
 
-    if isinstance(LP_problem_data, cuopt_mps_parser.parser_wrapper.DataModel):
+    if isinstance(LP_problem_data, DataModel):
         model = LP_problem_data
     else:
-        model = cuopt_mps_parser.ParseMps(LP_problem_data)
+        model = ParseMps(LP_problem_data)
 
-    problem_data = cuopt_mps_parser.toDict(model, json=True)
+    problem_data = toDict(model, json=True)
     if no_var_names:
         problem_data.pop("variable_names")
 
