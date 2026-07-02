@@ -10,16 +10,18 @@ closest near-miss."
 > (MILP)** — **including the max-supply model** — has no usable duals, and a **quadratic
 > _constraint_** makes cuOpt NaN-fill every dual (a quadratic _objective_ is fine — it is a
 > quadratic _constraint_ that breaks them). `DualValue` / `ReducedCost` are not meaningful in
-> either case. For a MILP, get the marginal value by **differencing adjacent solves** (re-solve
+> either case. For a MILP, get the value of one more unit by **differencing adjacent solves** (re-solve
 > with the bound relaxed by one unit and compare objectives), or read duals from the **LP
 > relaxation**.
 
 ## Constraint dual value — the marginal value of relaxing a limit
 
 A constraint's `DualValue` is the **sensitivity** of the optimum to that constraint: the marginal
-value of one more unit of that limit, holding everything else fixed. At a non-degenerate optimum
-that is the exact change in objective per unit relaxed; under **degeneracy** (common in practice) it
-is one-sided, so read it as a direction (see *When a dual is soft*).
+rate at which the objective improves as that limit relaxes, holding everything else fixed. It is a
+derivative, not a per-unit forecast — over a finite step (even one unit) the solution can
+restructure and the rate change along the way, and under **degeneracy** (common in practice) the
+rate is one-sided, so read it as a direction (see *When a dual is soft*). For the actual value of a
+finite relaxation, difference two solves.
 
 - The implication runs **one way**: a **slack** constraint (`Slack > 0`) always prices to ~0 —
   relaxing it changes nothing, because it is not the bottleneck. But `Slack ≈ 0` does **not**
@@ -38,7 +40,7 @@ is one-sided, so read it as a direction (see *When a dual is soft*).
 # The |dual| ranking is meaningful within comparable-unit constraints:
 binding = [(c.ConstraintName, c.DualValue) for c in problem.getConstraints() if abs(c.Slack) < 1e-6]
 for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
-    print(f"{name}: dual {dual:+.4g}  (objective change per unit relaxed)")
+    print(f"{name}: dual {dual:+.4g}  (marginal rate as this limit relaxes)")
 ```
 
 In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
@@ -73,8 +75,8 @@ for name, rc in sorted(near, key=lambda kv: abs(kv[1])):
 Two questions answered straight from the duals:
 
 - **Where to invest / what to renegotiate** — the binding constraint with the largest dual among
-  comparable-unit limits (or after the common-scale conversion above). Lift that limit and you gain
-  the most per unit.
+  comparable-unit limits (or after the common-scale conversion above). Relaxing that limit improves the
+  objective at the highest marginal rate.
 - **The closest near-miss** — the unused option with the smallest reduced cost, compared in like
   units or as a fraction of its own coefficient. The first thing that would enter the plan if the
   economics shift.
@@ -98,17 +100,15 @@ simplex basis gives.
 
 - Report the **ranking** of binding constraints (within comparable units) as solid; present a
   single dual as a *direction* ("this is the lever to renegotiate"), not a hard per-unit rate.
-- Confirm any rate you quote with the one-unit re-solve (below): if the objective change does not
-  match `DualValue`, the optimum is degenerate — give the direction, not the number.
+- Quote a finite change only from a differencing re-solve: the dual is the rate at the current
+  optimum, and the realized change over a step can differ from `dual × step` (the active set can
+  change along the way, degenerate or not).
 
-An LP / simplex effect; a strictly convex QP (quadratic _objective_, not constraint) has a unique
-optimum and its duals read firmer — though degenerate active constraints can still make the
-multipliers non-unique, so the re-solve check stays worthwhile.
 
 ## Sign conventions
 
 `DualValue` / `ReducedCost` signs depend on the constraint sense and the objective direction. Read
 the **magnitude** for leverage ("how much per unit") and the **constraint sense** for direction
-(relaxing a `<=` capacity raises a maximize objective). When unsure, confirm with a one-unit
-re-solve: at a non-degenerate optimum the objective difference matches the dual to solver
-tolerance (when it does not, see *When a dual is soft*).
+(relaxing a `<=` capacity raises a maximize objective). When unsure, re-solve with the bound
+slightly relaxed: the sign of the objective change gives the direction, and the difference itself
+is the number to quote for a finite step (see *When a dual is soft*).
