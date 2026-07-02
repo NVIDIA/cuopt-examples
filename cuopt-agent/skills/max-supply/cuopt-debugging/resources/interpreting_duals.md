@@ -11,8 +11,8 @@ closest near-miss."
 > _constraint_** makes cuOpt NaN-fill every dual (a quadratic _objective_ is fine — it is a
 > quadratic _constraint_ that breaks them). `DualValue` / `ReducedCost` are not meaningful in
 > either case. For a MILP, get the value of one more unit by **differencing adjacent solves** (re-solve
-> with the bound relaxed by one unit and compare objectives), or read duals from the **LP
-> relaxation**.
+> with the bound relaxed by one unit and compare objectives); duals of the **LP relaxation** are a
+> quicker guide, but the integer optimum can respond differently — differencing is the ground truth.
 
 ## Constraint dual value — the marginal value of relaxing a limit
 
@@ -46,8 +46,9 @@ for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
 In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
 and the **per-period supply limits** — the dual prices each one: the marginal rate, in
 finished-goods terms, at which a tight resource period (e.g. `RES2`) or a material's supply limit
-pays off as it relaxes. Hour-caps rank against hour-caps and supply limits against supply limits; across the two,
-convert to a common scale first. (Read it from the LP relaxation, since the model itself is a MILP.)
+pays off as it relaxes. Hour-caps rank against hour-caps and supply limits against supply limits;
+across the two, convert to a common scale first. (The model itself is a MILP, so read this from the LP relaxation
+as a guide and difference two MILP solves for the real number.)
 
 ## Reduced cost — how far an unused option is from entering
 
