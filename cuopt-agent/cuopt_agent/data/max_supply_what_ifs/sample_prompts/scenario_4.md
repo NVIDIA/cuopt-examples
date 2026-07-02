@@ -15,9 +15,10 @@ single plan; it's the tradeoff laid out so they can choose where to sit.
 1. Bring cost into the picture as a reporting quantity built from `item_costs.csv` and
    `resource_costs.csv` over the model's existing variables — no new decisions.
 
-2. Give finance the **whole supply-vs-cost tradeoff**, not one plan and not a single blended
-   objective: show how much finished-goods supply each budget level buys, from a tight budget up to
-   where more money stops buying more supply.
+2. Give finance the **supply-vs-cost tradeoff across the budget range**, not one plan and not a
+   single blended objective: show how much finished-goods supply each budget level buys, from a
+   tight budget up to where more money stops buying more supply. (A budget sweep samples the
+   curve — on a MILP it is a step function, so present sampled points, not an interpolated line.)
 
 3. Solve on the sample dataset (10 periods) and present it so finance can act: the tradeoff curve,
    the rate at which supply is bought as the budget loosens and where that rate falls off (the knee),
