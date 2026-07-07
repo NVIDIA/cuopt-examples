@@ -12,6 +12,11 @@ The diet optimization notebook solves a linear programming problem where:
 - The diet is a mix of different foods.
 - The foods have different prices and nutritional values.
 
+The notebook also demonstrates **sensitivity analysis** on the solved LP: reading constraint
+**dual values** (`DualValue`) and variable **reduced costs** (`ReducedCost`) to see which
+nutritional requirements drive the cost at the margin and roughly how far each unused food is
+from entering the diet (local rates — see the notebook's degeneracy and units caveats).
+
 
 ### 2. Diet Optimization (MILP)
 
