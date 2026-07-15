@@ -7,14 +7,13 @@ closest near-miss."
 
 > **Continuous models, linear constraints.** Duals and reduced costs exist for **continuous**
 > (LP / QP) solutions off **linear** constraints — an **integer model (MILP)**, **including the
-> max-supply model**, returns none. The canonical availability rule (including the
-> quadratic-constraint case) lives in the `cuopt-numerical-optimization-api` skill under *Dual
-> Values* — this page defers to it rather than restating it. At runtime, key off the returned
-> values: finite duals are provided, NaN-filled duals are not — a check that stays correct
-> across releases. For a MILP, get the value of one more unit by **differencing adjacent
-> solves** (re-solve with the bound relaxed by one unit and compare objectives); duals of the
-> **LP relaxation** are a quicker guide, but the integer optimum can respond differently —
-> differencing is the ground truth.
+> max-supply model**, returns none. The full availability rule (including the
+> quadratic-constraint case) is in the `cuopt-numerical-optimization-api` skill under *Dual
+> Values*. At runtime, key off the returned values: finite duals are provided, NaN-filled are
+> not. For a MILP, get the value of one more unit by **differencing adjacent solves** (re-solve
+> with the bound relaxed by one unit and compare objectives); duals of the **LP relaxation**
+> are a quicker guide, but the integer optimum can respond differently — differencing is the
+> ground truth.
 
 ## Constraint dual value — the marginal value of relaxing a limit
 
