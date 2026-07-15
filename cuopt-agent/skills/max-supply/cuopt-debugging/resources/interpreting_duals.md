@@ -1,18 +1,20 @@
 # Interpreting Dual Values, Reduced Costs, and Slack
 
 `diagnostic_snippets.md` shows how to *read* `DualValue`, `ReducedCost`, and `Slack` off a solved
-problem. This explains what they *mean* for the decision — turning solver output into "which
+problem. This page explains what they *mean* for the decision — turning solver output into "which
 constraint is the binding bottleneck, what relaxing it is worth, and which unused option is the
 closest near-miss."
 
 > **Continuous models, linear constraints.** Duals and reduced costs exist for **continuous**
-> (LP / QP) solutions off **linear** constraints. Two cases return none: an **integer model
-> (MILP)** — **including the max-supply model** — has no usable duals, and a **quadratic
-> _constraint_** makes cuOpt NaN-fill every dual (a quadratic _objective_ is fine — it is a
-> quadratic _constraint_ that breaks them). `DualValue` / `ReducedCost` are not meaningful in
-> either case. For a MILP, get the value of one more unit by **differencing adjacent solves** (re-solve
-> with the bound relaxed by one unit and compare objectives); duals of the **LP relaxation** are a
-> quicker guide, but the integer optimum can respond differently — differencing is the ground truth.
+> (LP / QP) solutions off **linear** constraints — an **integer model (MILP)**, **including the
+> max-supply model**, returns none. The canonical availability rule (including the
+> quadratic-constraint case) lives in the `cuopt-numerical-optimization-api` skill under *Dual
+> Values* — this page defers to it rather than restating it. At runtime, key off the returned
+> values: finite duals are provided, NaN-filled duals are not — a check that stays correct
+> across releases. For a MILP, get the value of one more unit by **differencing adjacent
+> solves** (re-solve with the bound relaxed by one unit and compare objectives); duals of the
+> **LP relaxation** are a quicker guide, but the integer optimum can respond differently —
+> differencing is the ground truth.
 
 ## Constraint dual value — the marginal value of relaxing a limit
 
@@ -45,7 +47,8 @@ for name, dual in sorted(binding, key=lambda kv: -abs(kv[1])):
     print(f"{name}: dual {dual:+.4g}  (marginal rate as this limit relaxes)")
 ```
 
-In the max-supply shape the constraints that typically bind are the **resource-hour capacities**
+In the max-supply model — this agent's multi-period supply-chain planning example — the
+constraints that typically bind are the **resource-hour capacities**
 and the **per-period supply limits** — the dual prices each one: the marginal rate, in
 finished-goods terms, at which a tight resource period (e.g. `RES2`) or a material's supply limit
 pays off as it relaxes. Hour-caps rank against hour-caps and supply limits against supply limits;
@@ -61,8 +64,8 @@ pay off. (The returned value certifies the first direction, not the second — d
 It is the **near-miss** signal.
 
 - A variable strictly **between** its bounds prices to ~0. One pressed against an *upper* bound can
-  carry a nonzero reduced cost with `Value > 0` — there it reads as the marginal value of raising
-  that bound.
+  carry a nonzero reduced cost with `Value > 0` — there its **magnitude** is the marginal value of
+  raising that bound; read the direction as for any bound relaxation (see *Sign conventions*).
 - A variable **at its bound** can also price to ~0 — degeneracy again: an alternative optimum uses
   it with no coefficient change at all (the mirror of a binding constraint with a zero dual).
 - Among the variables left at `0` with a clearly nonzero reduced cost, the one with the
@@ -99,16 +102,16 @@ bottleneck — each extra hour is worth ~`X` finished units; *material Y* is the
 
 ## When a dual is soft (degeneracy)
 
-A dual is exact for the basis the solver returned, but at a **degenerate** optimum — many
+A simplex dual is exact for the basis the solver returned, but at a **degenerate** optimum — many
 constraints binding at once (a lot of `Slack ≈ 0`) — that basis is one of several, so the dual is
 one-sided and non-unique. It reads most precise exactly where it is least reliable, the common case
 on large LPs.
 
 Which solver ran matters too: cuOpt **often returns no basis at all** — the first-order **PDLP**
 path (common on large LPs, and one arm of the concurrent default) produces duals only to the
-convergence tolerance, with no basis behind them. Those duals get the same treatment: leverage and
-direction, not exact rates, and at-bound reduced costs are not the crisp zero / nonzero split a
-simplex basis gives.
+convergence tolerance, and the same holds for any **barrier** / interior-point solve without
+crossover. Basis-free duals get the same treatment: leverage and direction, not exact rates, and
+at-bound reduced costs are not the crisp zero / nonzero split a simplex basis gives.
 
 - Use the **ranking** of binding constraints (within comparable units) as a shortlist and a single
   dual as a *direction* ("this is the lever to renegotiate"), not a hard per-unit rate — the dual
