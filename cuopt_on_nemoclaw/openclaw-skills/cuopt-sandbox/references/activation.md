@@ -10,7 +10,7 @@ When the user uploads tabular files and asks for a schedule, assignment,
 roster, allocation, or route (any wording):
 
 1. **`optimization-from-data-orchestrator`** — workflow sequence
-2. **`cuopt-sandbox`** — probe/smoke gates, remote env
+2. **`cuopt-sandbox`** — probe/smoke gates, capability-based Python gRPC
 3. Downstream: intent-router → ingestion → model-mapper → vendored API skills
 
 Also loaded every session: bundled **`cuopt-setup`** guardrail (absolute paths).

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """REST VRP smoke test for the NemoClaw cuOpt sandbox.
 
-Routing uses REST on port 5000 (not CUOPT_REMOTE_* gRPC vars).
+Routing uses REST on port 5000; LP/MILP/QP use the async Python gRPC client.
 Do not use ``from cuopt import routing`` — there is no GPU in the sandbox.
 
 Env (defaults shown):

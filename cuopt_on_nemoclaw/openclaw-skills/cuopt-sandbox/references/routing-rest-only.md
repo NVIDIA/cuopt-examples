@@ -1,12 +1,12 @@
 # Routing (REST only in sandbox)
 
 Vehicle routing (VRP, TSP, PDP) uses the **REST API** on port **5000**,
-not gRPC `CUOPT_REMOTE_*`.
+not either LP/MILP/QP gRPC execution path.
 
-| Interface | Port | Env vars |
+| Interface | Port | Client |
 |---|---|---|
-| LP / MILP / QP (Python) | 5001 gRPC | `CUOPT_REMOTE_HOST`, `CUOPT_REMOTE_PORT` |
-| VRP / routing | 5000 REST | none — use REST client |
+| LP / MILP / QP (Python) | 5001 gRPC | Async `Client` or legacy remote fallback |
+| VRP / routing | 5000 REST | `cuopt_sh_client` / REST |
 
 Host: `host.openshell.internal` (not `localhost`).
 

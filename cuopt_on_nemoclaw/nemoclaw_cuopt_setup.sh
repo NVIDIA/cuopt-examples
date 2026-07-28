@@ -17,7 +17,10 @@
 # NemoClaw cuOpt sandbox setup
 #
 # Subcommands:
-#   add [NAME]                 Add cuOpt to a sandbox: policy + install + skill + test --smoke.
+#   add [--nightly[=VERSION]] [NAME]
+#                              Add cuOpt to a sandbox: policy + install +
+#                              skill + test --smoke. The nightly flag is
+#                              forwarded to the install step.
 #   apply-policy [NAME]        Add cuOpt network policy to a running sandbox.
 #   install [NAME]             Install cuOpt packages in the sandbox venv and
 #                              stamp the activation file (see install-activation).
@@ -41,7 +44,10 @@
 #   test --smoke [NAME]        Probe + LP/MILP/VRP solve smokes when installed and reachable.
 #
 # Flags:
-#   -y, --yes       Skip confirmation prompts (for CI/CD).
+#   -y, --yes                  Skip confirmation prompts (for CI/CD).
+#   --nightly                  Install the latest cuOpt nightly. Always resolves
+#                              online so an old cache cannot masquerade as latest.
+#   --nightly=VERSION          Install an exact nightly version (cacheable).
 #
 # Environment:
 #   CUOPT_SANDBOX   Sandbox name             (default: cuopt)
@@ -85,15 +91,24 @@
 #                      sandbox that already has cuOpt installed). `install`
 #                      auto-detects the matching subdir and uploads it for
 #                      offline install.
+#   CUOPT_PIP_NIGHTLY_INDEX  Python package index containing RAPIDS nightlies
+#                      (default: https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/)
 #
 # Examples:
 #   ./nemoclaw_cuopt_setup.sh add cuopt              # Slow first install (online)
+#   ./nemoclaw_cuopt_setup.sh add --nightly cuopt    # Latest nightly + full setup
+#   ./nemoclaw_cuopt_setup.sh add --nightly=26.8.0a229 cuopt
+#                                                    # Exact nightly + full setup
 #   ./nemoclaw_cuopt_setup.sh cache-wheels cuopt     # Snapshot wheels to host
 #   nemoclaw delete cuopt && nemoclaw create cuopt   # Recreate sandbox
 #   ./nemoclaw_cuopt_setup.sh add cuopt              # Now installs offline (fast)
 #   ./nemoclaw_cuopt_setup.sh apply-policy bob       # Just fix network policy
 #   ./nemoclaw_cuopt_setup.sh test cuopt             # Connectivity probe only
 #   ./nemoclaw_cuopt_setup.sh test --smoke cuopt    # Probe + solve smokes
+#   ./nemoclaw_cuopt_setup.sh install --nightly cuopt
+#                                                    # Latest nightly (online)
+#   ./nemoclaw_cuopt_setup.sh install --nightly=26.8.0a229 cuopt
+#                                                    # Exact nightly / cacheable
 #
 # Version compatibility:
 #   The TESTED_NEMOCLAW_VERSION / TESTED_OPENSHELL_VERSION constants below
@@ -135,11 +150,18 @@ CUOPT_SKILLS_REF="${CUOPT_SKILLS_REF:-${TESTED_CUOPT_SKILLS_REF}}"
 CUOPT_SKILLS_SKIP="${CUOPT_SKILLS_SKIP:-cuopt-install,*developer*,*-api-c}"
 
 # ── pip-package set (single source of truth) ─────────────────────
-# Pinned packages installed by cmd_install AND fetched by cmd_cache_wheels.
-# Edit here once; the cache key incorporates this string's hash so version
-# bumps automatically invalidate stale caches.
-CUOPT_PIP_PACKAGES="${CUOPT_PIP_PACKAGES:-cuopt-sh-client cuopt-cu13==26.04 grpcio}"
+# Packages installed by cmd_install AND fetched by cmd_cache_wheels.
+# Stable is the default; configure_cuopt_packages switches this to a latest
+# or exact nightly when the corresponding command-line flag is present.
+CUOPT_STABLE_VERSION="${CUOPT_STABLE_VERSION:-26.06}"
+CUOPT_PIP_PACKAGES_WAS_SET=false
+[[ -n "${CUOPT_PIP_PACKAGES+x}" ]] && CUOPT_PIP_PACKAGES_WAS_SET=true
+CUOPT_PIP_PACKAGES="${CUOPT_PIP_PACKAGES:-cuopt-sh-client cuopt-cu13==${CUOPT_STABLE_VERSION} grpcio}"
 CUOPT_PIP_EXTRA_INDEX="${CUOPT_PIP_EXTRA_INDEX:-https://pypi.nvidia.com}"
+CUOPT_PIP_NIGHTLY_INDEX="${CUOPT_PIP_NIGHTLY_INDEX:-https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/}"
+CUOPT_PIP_ONLINE_FLAGS="--extra-index-url=${CUOPT_PIP_EXTRA_INDEX}"
+CUOPT_NIGHTLY=false
+CUOPT_NIGHTLY_VERSION=""
 
 # ── wheel cache (host-side, snapshotted from a sandbox) ─────────
 # `cache-wheels` snapshots an already-installed sandbox's resolved wheel
@@ -880,6 +902,47 @@ cmd_apply_policy() {
 }
 
 
+# ── package channel selection ─────────────────────────────────────
+configure_cuopt_packages() {
+  if ! $CUOPT_NIGHTLY; then
+    return 0
+  fi
+
+  if $CUOPT_PIP_PACKAGES_WAS_SET; then
+    echo "error: --nightly cannot be combined with CUOPT_PIP_PACKAGES" >&2
+    exit 2
+  fi
+
+  local cuopt_requirement="cuopt-cu13"
+  if [[ -n "$CUOPT_NIGHTLY_VERSION" ]]; then
+    if [[ ! "$CUOPT_NIGHTLY_VERSION" =~ ^[0-9][0-9A-Za-z.!+_-]*$ ]]; then
+      echo "error: invalid nightly version '$CUOPT_NIGHTLY_VERSION'" >&2
+      echo "       expected an exact package version such as 26.8.0a229" >&2
+      exit 2
+    fi
+    if ! is_prerelease_version "$CUOPT_NIGHTLY_VERSION"; then
+      echo "error: --nightly=$CUOPT_NIGHTLY_VERSION is not a nightly (prerelease) version" >&2
+      echo "       expected something like 26.8.0a229 (omit --nightly for stable)" >&2
+      exit 2
+    fi
+    cuopt_requirement="cuopt-cu13==${CUOPT_NIGHTLY_VERSION}"
+  fi
+
+  CUOPT_PIP_PACKAGES="cuopt-sh-client ${cuopt_requirement} grpcio"
+  CUOPT_PIP_ONLINE_FLAGS="--pre --extra-index-url=${CUOPT_PIP_EXTRA_INDEX} --extra-index-url=${CUOPT_PIP_NIGHTLY_INDEX}"
+}
+
+nightly_latest_requested() {
+  $CUOPT_NIGHTLY && [[ -z "$CUOPT_NIGHTLY_VERSION" ]]
+}
+
+# True for PEP 440 prereleases such as 26.8.0a229, 26.8.0b1, 26.8.0rc1.
+# Stable releases like 26.4.0 / 26.04 do not match.
+is_prerelease_version() {
+  local version="$1"
+  [[ "$version" =~ [0-9](a|b|rc|c|\.dev)[0-9] ]]
+}
+
 # ── wheel cache helpers ───────────────────────────────────────────
 # Cache subdir = sha256(package set) so version bumps invalidate the
 # cache. We don't include a platform tag because the snapshotted wheels
@@ -918,7 +981,6 @@ wheel_cache_present() {
 # openshell download has the same hang as exec).
 cmd_cache_wheels() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
-  local cache_dir; cache_dir="$(wheel_cache_dir)"
   local sandbox_venv="/sandbox/${CUOPT_VENV}"
   local sandbox_stage="/sandbox/.openclaw-data/wheels-snapshot"
 
@@ -938,10 +1000,6 @@ cmd_cache_wheels() {
     docker exec -u sandbox -e HOME=/sandbox "$container" "$@"
   }
 
-  echo "Snapshotting cuOpt wheels from sandbox '$sandbox':"
-  echo "  venv : $sandbox_venv"
-  echo "  cache: $cache_dir"
-
   # 1. Verify sandbox venv has cuopt installed. Cheap (<1s).
   if ! _sb_exec "$sandbox_venv/bin/python" -c \
          "import cuopt_sh_client" >/dev/null 2>&1; then
@@ -953,6 +1011,68 @@ error: sandbox '$sandbox' does not have a working cuOpt venv at
        offline reuse.
 EOF
     exit 2
+  fi
+
+  local installed_requirement
+  installed_requirement="$(
+    _sb_exec "$sandbox_venv/bin/pip" freeze \
+      | while IFS= read -r requirement; do
+          case "${requirement,,}" in
+            cuopt-cu13==*)
+              printf '%s' "$requirement"
+              break
+              ;;
+          esac
+        done
+  )"
+  if [[ -z "$installed_requirement" ]]; then
+    echo "error: could not determine installed cuopt-cu13 version" >&2
+    exit 2
+  fi
+
+  local installed_version="${installed_requirement#*==}"
+
+  # A floating --nightly install deliberately bypasses caches. Snapshot its
+  # resolved exact version under the same key that --nightly=VERSION uses,
+  # so the resulting cache can be reused reproducibly.
+  if nightly_latest_requested; then
+    if ! is_prerelease_version "$installed_version"; then
+      echo "error: --nightly requires a nightly (prerelease) cuopt-cu13 in the sandbox," >&2
+      echo "       but found $installed_requirement." >&2
+      echo "       Install a nightly first:" >&2
+      echo "         ./nemoclaw_cuopt_setup.sh install --nightly $sandbox" >&2
+      exit 2
+    fi
+    CUOPT_NIGHTLY_VERSION="$installed_version"
+    CUOPT_PIP_PACKAGES="cuopt-sh-client ${installed_requirement} grpcio"
+  else
+    local expected_requirement=""
+    local requirement
+    for requirement in $CUOPT_PIP_PACKAGES; do
+      case "${requirement,,}" in
+        cuopt-cu13==*) expected_requirement="$requirement" ;;
+      esac
+    done
+    if [[ -n "$expected_requirement" && \
+          "${installed_requirement,,}" != "${expected_requirement,,}" ]]; then
+      echo "error: sandbox has $installed_requirement, but this cache command expects" >&2
+      echo "       $expected_requirement. Install that version first with the same flags." >&2
+      exit 2
+    fi
+    if $CUOPT_NIGHTLY && ! is_prerelease_version "$installed_version"; then
+      echo "error: --nightly=$CUOPT_NIGHTLY_VERSION expects a nightly (prerelease)," >&2
+      echo "       but the sandbox has $installed_requirement." >&2
+      exit 2
+    fi
+  fi
+
+  local cache_dir
+  cache_dir="$(wheel_cache_dir)"
+  echo "Snapshotting cuOpt wheels from sandbox '$sandbox':"
+  echo "  venv : $sandbox_venv"
+  echo "  cache: $cache_dir"
+  if [[ -n "$CUOPT_NIGHTLY_VERSION" ]]; then
+    echo "  nightly version: $CUOPT_NIGHTLY_VERSION"
   fi
 
   # 2. In the sandbox: freeze + pip download --no-deps. With exact-version
@@ -977,10 +1097,14 @@ mkdir -p '$sandbox_stage'
   > '$sandbox_stage/requirements.txt'
 n_pkgs=\$(wc -l < '$sandbox_stage/requirements.txt')
 echo "    frozen \$n_pkgs packages"
+# Same indexes / --pre as online install: freeze pins alpha builds
+# (e.g. cudf-cu13==26.8.0a978) that pypi.nvidia.com does not carry.
+# Prefer pip's HTTP cache from the prior install; nightlies are the
+# fallback when the cache misses.
 '$sandbox_venv/bin/pip' download \\
   --no-deps \\
   --dest '$sandbox_stage' \\
-  --extra-index-url='$CUOPT_PIP_EXTRA_INDEX' \\
+  $CUOPT_PIP_ONLINE_FLAGS \\
   --requirement '$sandbox_stage/requirements.txt' \\
   --quiet
 n_whl=\$(ls -1 '$sandbox_stage'/*.whl 2>/dev/null | wc -l)
@@ -1026,7 +1150,12 @@ INNER
 
   echo ""
   echo "Cached $n wheels ($sz) in $cache_dir"
-  echo "Subsequent './nemoclaw_cuopt_setup.sh install' / 'add' will install offline."
+  if $CUOPT_NIGHTLY; then
+    echo "Reuse with:"
+    echo "  ./nemoclaw_cuopt_setup.sh install --nightly=$CUOPT_NIGHTLY_VERSION $sandbox"
+  else
+    echo "Subsequent './nemoclaw_cuopt_setup.sh install' / 'add' will install offline."
+  fi
 }
 
 # ── clear-wheel-cache ─────────────────────────────────────────────
@@ -1059,14 +1188,10 @@ cmd_install() {
   # so they resolve to the venv shims (otherwise we'd shadow the venv with
   # the system interpreter).
   #
-  # We install cuopt-cu13 even though execution is remote: the agent builds
-  # problems with the cuopt Python API, which has to import cuopt.* — those
-  # imports require the package to be installed locally. The CUOPT_SERVER
-  # env var (written by install_activation into .bash_profile) routes
-  # the actual solve to the remote server, so CUDA never gets loaded in the
-  # sandbox. cu13 is
-  # used because the host driver is CUDA 13.x; switch to cuopt-cu12 by
-  # editing this line if your host driver is CUDA 12.x.
+  # The agent builds problems through the cuOpt Python package and uses either
+  # the embedded async gRPC client (when available) or the legacy remote
+  # fallback, so cuopt-cu13 must be installed even though the solver runs on
+  # the host.
 
   # Decide online vs offline-from-cache. The cache is keyed by the
   # CUOPT_PIP_PACKAGES hash, so editing the package set automatically
@@ -1074,7 +1199,7 @@ cmd_install() {
   # set. (Wheel platform tags are baked into the snapshotted .whl
   # filenames; pip honors them at install time.)
   local pip_install_line
-  if wheel_cache_present; then
+  if ! nightly_latest_requested && wheel_cache_present; then
     local cache_dir; cache_dir="$(wheel_cache_dir)"
     local n; n="$(ls -1 "$cache_dir"/*.whl 2>/dev/null | wc -l)"
     echo "  Wheel cache hit ($n wheels in $cache_dir); uploading and installing offline."
@@ -1089,14 +1214,24 @@ cmd_install() {
     # existing --find-links path keeps working unchanged.
     if ! upload_wheel_cache "$sandbox" "$cache_dir" "$CUOPT_SANDBOX_WHEEL_DIR"; then
       echo "  warning: wheel cache upload failed; falling back to online install" >&2
-      pip_install_line="pip install $CUOPT_PIP_PACKAGES --extra-index-url=$CUOPT_PIP_EXTRA_INDEX"
+      pip_install_line="pip install $CUOPT_PIP_ONLINE_FLAGS $CUOPT_PIP_PACKAGES"
     else
-      pip_install_line="pip install --no-index --find-links=$CUOPT_SANDBOX_WHEEL_DIR $CUOPT_PIP_PACKAGES"
+      local pre_flag=""
+      $CUOPT_NIGHTLY && pre_flag="--pre"
+      pip_install_line="pip install $pre_flag --no-index --find-links=$CUOPT_SANDBOX_WHEEL_DIR $CUOPT_PIP_PACKAGES"
     fi
   else
-    echo "  No wheel cache at $(wheel_cache_dir); installing online from PyPI."
-    echo "  (Run './nemoclaw_cuopt_setup.sh cache-wheels' once to make subsequent installs fast.)"
-    pip_install_line="pip install $CUOPT_PIP_PACKAGES --extra-index-url=$CUOPT_PIP_EXTRA_INDEX"
+    local upgrade_flag=""
+    if nightly_latest_requested; then
+      echo "  Resolving latest cuOpt nightly online (wheel cache intentionally bypassed)."
+      echo "  Use --nightly=VERSION for a reproducible, cacheable nightly."
+      upgrade_flag="--upgrade"
+    elif $CUOPT_NIGHTLY; then
+      echo "  No wheel cache at $(wheel_cache_dir); installing exact nightly $CUOPT_NIGHTLY_VERSION online."
+    else
+      echo "  No wheel cache at $(wheel_cache_dir); installing stable cuOpt online."
+    fi
+    pip_install_line="pip install $upgrade_flag $CUOPT_PIP_ONLINE_FLAGS $CUOPT_PIP_PACKAGES"
   fi
 
   local commands=(
@@ -1329,7 +1464,7 @@ python3 -c \"import cuopt_sh_client; print('cuopt_sh_client', cuopt_sh_client.__
 echo ''
 echo '--- cuOpt endpoint probe (REST=${cuopt_url}, gRPC=${grpc_host}:${CUOPT_GRPC_PORT}) ---'
 PROBE_OUT=\$(CUOPT_SERVER_HOST=${grpc_host} CUOPT_SERVER_PORT=${CUOPT_PORT} \\
-  CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
+  CUOPT_GRPC_HOST=${grpc_host} CUOPT_GRPC_PORT=${CUOPT_GRPC_PORT} \\
   python3 /sandbox/probe_cuopt.py 2>&1) || true
 echo \"\$PROBE_OUT\"
 
@@ -1343,7 +1478,7 @@ if [[ ${solves_flag} == true ]]; then
 
   if [[ \$GRPC_OK == true ]]; then
     if [[ -f /sandbox/smoke_lp.py ]]; then
-      echo '--- remote LP smoke (smoke_lp.py) ---'
+      echo '--- gRPC LP smoke (async preferred; remote fallback) ---'
       CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
         python3 /sandbox/smoke_lp.py || true
       echo ''
@@ -1352,7 +1487,7 @@ if [[ ${solves_flag} == true ]]; then
       echo ''
     fi
     if [[ -f /sandbox/smoke_milp.py ]]; then
-      echo '--- remote MILP smoke (smoke_milp.py) ---'
+      echo '--- gRPC MILP smoke (async preferred; remote fallback) ---'
       CUOPT_REMOTE_HOST=${grpc_host} CUOPT_REMOTE_PORT=${CUOPT_GRPC_PORT} \\
         python3 /sandbox/smoke_milp.py || true
       echo ''
@@ -1673,6 +1808,88 @@ INNER_EOF
   return 0
 }
 
+# ── install_workspace_agents_md (helper) ──────────────────────────
+# Add a compact activation rule to the workspace AGENTS.md, which OpenClaw
+# injects every turn. This gets cuOpt selected before the model encounters
+# stale scripts/results that might otherwise look like a completed answer.
+install_workspace_agents_md() {
+  local sandbox="$1"
+  local container
+  if ! container=$(find_sandbox_container "$sandbox"); then
+    echo "  warning: cannot update AGENTS.md (sandbox container not running)" >&2
+    return 1
+  fi
+
+  local inner_script
+  inner_script=$(cat <<'INNER_EOF'
+from pathlib import Path
+
+path = Path("/sandbox/.openclaw/workspace/AGENTS.md")
+begin = "# >> cuopt optimization policy"
+end = "# << cuopt optimization policy"
+block = """# >> cuopt optimization policy
+## cuOpt optimization policy
+
+- For any request that constructs a schedule, assignment, route, roster,
+  allocation, or constrained plan, read
+  `/sandbox/.openclaw/skills/cuopt-sandbox/SKILL.md` before choosing an
+  implementation.
+- Existing solver scripts, result files, and prior outputs under `/sandbox`
+  are historical context only. You may inspect them as drafts, but they do
+  not satisfy the current request.
+- For current inputs, run the cuOpt gates. Prefer a fresh, cancelable async
+  Python gRPC job; if that API is unavailable in the installed cuOpt build,
+  use the documented legacy remote fallback and report that cancellation is
+  unavailable.
+- Do not substitute a heuristic or another solver. If cuOpt is unavailable,
+  report the concrete blocker and stop unless the user explicitly requests a
+  non-cuOpt approach.
+- Put nontrivial Python or validation logic in a script file under `/sandbox`
+  or `/tmp`, then execute it with a short `bash -lc` command and the cuOpt venv
+  activated when needed.
+- Avoid large inline here-docs and nested shell/Python quoting. Validate with
+  a small direct command before composing a larger wrapper.
+# << cuopt optimization policy"""
+
+text = path.read_text() if path.exists() else "# AGENTS.md - Your Workspace\n"
+# Migrate the exact agent-authored section that prompted these managed rules.
+# Do not broadly remove similarly named user content.
+legacy_quoting_notes = """## Shell/tool quoting lessons
+
+- Prefer writing real script files under /tmp or /sandbox and then executing them, instead of large inline here-doc Python inside exec command strings.
+- For Python checks, use a temporary .py file plus bash -lc with the venv activated when needed.
+- Keep shell commands short; do complex logic in the script file, not in the shell quoting layer.
+- Avoid nested quote pyramids unless absolutely necessary.
+- If a validation task matters, verify with a small, direct command first before composing a larger wrapper."""
+text = text.replace("\n\n" + legacy_quoting_notes + "\n", "\n")
+kept = []
+skipping = False
+for line in text.splitlines():
+    if line == begin:
+        skipping = True
+        continue
+    if skipping and line == end:
+        skipping = False
+        continue
+    if not skipping:
+        kept.append(line)
+
+base = "\n".join(kept).rstrip()
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(base + "\n\n" + block + "\n")
+INNER_EOF
+)
+
+  local inner_b64
+  inner_b64=$(printf '%s' "$inner_script" | base64 -w 0)
+  if ! sandbox_exec "$sandbox" \
+       sh -c "echo '$inner_b64' | base64 -d | python3" >/dev/null 2>&1; then
+    echo "  warning: could not update AGENTS.md in container '$container'" >&2
+    return 1
+  fi
+  echo "  AGENTS.md cuOpt optimization policy updated"
+}
+
 # ── install-skill ─────────────────────────────────────────────────
 cmd_install_skill() {
   local sandbox="${1:-$CUOPT_SANDBOX}"
@@ -1705,6 +1922,11 @@ cmd_install_skill() {
     name="$(basename "$skill")"
     if [[ -f "$skill/SKILL.md" ]]; then
       echo "  Uploading local skill: $name"
+      # `openshell sandbox upload` merges into an existing directory.
+      # Remove the prior copy first so renamed/deleted references cannot
+      # survive and continue teaching stale behavior.
+      sandbox_exec "$sandbox" rm -rf "/sandbox/.openclaw/skills/$name" \
+        2>/dev/null || true
       if openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/" 2>&1; then
         uploaded_names+=("$name")
       else
@@ -1761,6 +1983,8 @@ cmd_install_skill() {
       echo "  Uploading upstream skill: $upstream_name"
       # Parent-dir destination per openshell >= 0.0.38 semantics (see
       # "upload semantics note" above the local-skill upload loop).
+      sandbox_exec "$sandbox" rm -rf \
+        "/sandbox/.openclaw/skills/$upstream_name" 2>/dev/null || true
       if ! openshell sandbox upload "$sandbox" "$skill" "/sandbox/.openclaw/skills/" 2>&1; then
         echo "  warning: upload failed for upstream skill '$upstream_name'" >&2
       fi
@@ -1932,6 +2156,9 @@ print("    skills.load.extraDirs=" + json.dumps(existing))
     echo "           until skills.load.extraDirs includes /sandbox/.openclaw/skills" >&2
   fi
 
+  install_workspace_agents_md "$sandbox" \
+  || echo "  warning: could not update workspace AGENTS.md (non-fatal)" >&2
+
   install_workspace_tools_md "$sandbox" \
   || echo "  warning: could not update workspace TOOLS.md (non-fatal)" >&2
 
@@ -1970,19 +2197,39 @@ cmd_add() {
 
 # ── dispatch ──────────────────────────────────────────────────────
 usage() {
-  sed -n '16,101p' "$0"
+  sed -n '16,120p' "$0"
 }
 
 main() {
   # Pull out global flags before subcommand dispatch
   local args=()
-  for arg in "$@"; do
-    case "$arg" in
-      -y|--yes) FORCE=true ;;
-      *) args+=("$arg") ;;
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -y|--yes)
+        FORCE=true
+        shift
+        ;;
+      --nightly)
+        CUOPT_NIGHTLY=true
+        shift
+        ;;
+      --nightly=*)
+        CUOPT_NIGHTLY=true
+        CUOPT_NIGHTLY_VERSION="${1#*=}"
+        if [[ -z "$CUOPT_NIGHTLY_VERSION" ]]; then
+          echo "error: --nightly= requires a version" >&2
+          exit 2
+        fi
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
     esac
   done
   set -- "${args[@]+"${args[@]}"}"
+  configure_cuopt_packages
 
   local sub="${1:-}"
   shift || true

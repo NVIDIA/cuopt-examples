@@ -48,11 +48,41 @@ it can be any existing sandbox.
 - **apply-policy** — Merges cuOpt network rules into a running sandbox's policy
 - **install** — Creates a Python venv (`/sandbox/.openclaw-data/cuopt`), installs `cuopt_sh_client`, `cuopt-cu13`, and `grpcio`, and stamps the cuOpt venv activation file (`/sandbox/.bash_profile`)
 - **install-activation** — Re-stamps `/sandbox/.bash_profile` without reinstalling the venv (use after changing `CUOPT_HOST`, `CUOPT_PORT`, or `CUOPT_VENV`)
-- **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox, then vendors the upstream cuOpt skills (numerical optimization for LP/MILP/QP, routing, server, formulation, user-rules, skill-evolution) from `github.com/NVIDIA/cuopt/tree/release/26.06/skills` so the agent can read them without outbound HTTPS. Override the upstream ref via `CUOPT_SKILLS_REF` (default `release/26.06`); narrow what gets installed via `CUOPT_SKILLS_SKIP` (comma-separated globs, default `cuopt-install,*developer*,*-api-c`). Also registers `/sandbox/.openclaw/skills` in `openclaw.json` (`skills.load.extraDirs`). When compact tool search is enabled (`tools.toolSearch` not `false`), appends a short file-access note to workspace `TOOLS.md`.
+- **install-skill** — Uploads skill files from `openclaw-skills/` into the sandbox, then vendors the upstream cuOpt skills (numerical optimization for LP/MILP/QP, routing, server, formulation, user-rules, skill-evolution) from `github.com/NVIDIA/cuopt/tree/release/26.06/skills` so the agent can read them without outbound HTTPS. Override the upstream ref via `CUOPT_SKILLS_REF` (default `release/26.06`); narrow what gets installed via `CUOPT_SKILLS_SKIP` (comma-separated globs, default `cuopt-install,*developer*,*-api-c`). Also registers `/sandbox/.openclaw/skills` in `openclaw.json` (`skills.load.extraDirs`), adds a managed cuOpt-first activation policy to workspace `AGENTS.md`, and, when compact tool search is enabled (`tools.toolSearch` not `false`), appends a short file-access note to workspace `TOOLS.md`.
 - **cache-wheels [NAME]** — Snapshot wheels from a sandbox that already has cuOpt installed into `$CUOPT_WHEEL_CACHE` on the host; later `install` / `add` can install offline.
 - **clear-wheel-cache** — Remove `$CUOPT_WHEEL_CACHE`.
 - **test** — Connectivity probe from inside the sandbox (`probe_cuopt.py` + pip check). Does **not** run solve smokes.
 - **test --smoke** — Probe plus end-to-end LP/MILP/VRP solves via `/sandbox/smoke_*.py` when `install-skill` has uploaded them. LP/MILP run only if gRPC is reachable; VRP only if REST is reachable (per the probe's `available:` line).
+
+### Installing cuOpt nightlies
+
+`install` and `add` accept global nightly flags:
+
+```bash
+# Resolve and install the latest nightly online.
+./nemoclaw_cuopt_setup.sh add --nightly cuopt
+
+# Run the full setup with an exact nightly version. Exact versions can use
+# the wheel cache.
+./nemoclaw_cuopt_setup.sh add --nightly=26.8.0a229 cuopt
+```
+
+`add` applies policy, installs the selected nightly, installs skills, and runs
+the smoke tests in one command. Use `install` with the same flags when only
+the package installation step is needed.
+
+The latest-nightly form intentionally bypasses the wheel cache so an older
+snapshot cannot be mistaken for the latest build. To snapshot the version it
+resolved, use the same flag:
+
+```bash
+./nemoclaw_cuopt_setup.sh cache-wheels --nightly cuopt
+```
+
+The command prints the resolved exact version and the
+`install --nightly=VERSION` command that reuses that cache. A specific nightly
+version is reproducible and may be used directly with `install`, `add`, and
+`cache-wheels`.
 
 ### Version compatibility
 

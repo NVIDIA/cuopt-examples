@@ -16,8 +16,8 @@
 
 | Service | Host:port | Notes |
 |---|---|---|
-| gRPC (LP/MILP/QP) | `host.openshell.internal:5001` | Requires `CUOPT_REMOTE_*` |
-| REST (VRP) | `host.openshell.internal:5000` | No remote env vars |
+| gRPC (LP/MILP/QP) | `host.openshell.internal:5001` | Async client or legacy remote fallback |
+| REST (VRP) | `host.openshell.internal:5000` | REST client |
 
 From inside the sandbox container, `localhost` points at the sandbox —
 not the host cuOpt services.
@@ -28,22 +28,22 @@ not the host cuOpt services.
 bash -lc 'python3 /sandbox/probe_cuopt.py'
 ```
 
-Read `available:` — typical values: `grpc`, `rest`, `rest grpc`, or empty
-if host services are down.
+Read both `available:` (services) and `python_async_grpc:` (Python API
+capability).
 
 | `available:` | Implication |
 |---|---|
-| `grpc` | LP/MILP/QP path viable after env + smoke |
+| `grpc` | LP/MILP/QP path viable after capability-aware smoke |
 | `rest` | VRP REST viable |
 | `rest grpc` | Both paths |
 | (empty / errors) | Report to user; do not invent heuristics as substitute |
 
-Probe success ≠ ready to solve — still run env + smoke for gRPC.
+Probe success ≠ ready to solve — still run the gRPC smoke.
 
 ## Remote-first workflow
 
 1. Probe → note `available:`
-2. For gRPC: export vars → smoke_lp (→ smoke_milp if scheduling)
+2. For gRPC: select async/fallback from probe → smoke_lp (→ smoke_milp if scheduling)
 3. For routing only: smoke_vrp if `rest` present
 4. Read formulation + API skills → build model
 5. Solve once; poll until terminal — `references/long-running-jobs.md`

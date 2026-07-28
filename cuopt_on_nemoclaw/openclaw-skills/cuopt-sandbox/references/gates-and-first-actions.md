@@ -9,23 +9,30 @@ turn two after the user corrects you.
 | Ready now | Wait until cuOpt smoke succeeds |
 |---|---|
 | `probe_cuopt.py` | Timed assignment output (schedule, roster, shift plan) |
-| Set `CUOPT_REMOTE_*`, run smoke scripts | Greedy / heuristic / backtracking code |
+| Run capability-aware gRPC smoke scripts | Greedy / heuristic / backtracking code |
 | Inspect uploaded CSVs for **columns and constraints** | "Draft plan while cuOpt sets up" |
 | Ask **one** blocking clarification | `ortools`, `pulp`, hand-rolled search |
-| Write `/sandbox/solve.py` for cuOpt | Feasibility verdict without cuOpt status |
+| Write `/sandbox/<job>.py` for any nontrivial cuOpt model | Feasibility verdict without cuOpt status |
 
 Inspecting uploaded data for structure is fine; emit a completed assignment
 plan only after cuOpt returns a solver status.
 
+Existing `/sandbox` scripts and result files are historical artifacts, not
+evidence that the current request was solved. They may be inspected as drafts,
+but rerun the gates and solve the current inputs through the selected cuOpt
+gRPC path.
+
 ## Mandatory order (every optimization task)
 
 1. **Probe** — `bash -lc 'python3 /sandbox/probe_cuopt.py'`
-2. **Remote env** — export `CUOPT_REMOTE_HOST` / `CUOPT_REMOTE_PORT` in
-   the same shell as Python. See `references/remote-env-and-smoke.md`.
+2. **Select execution** — if `python_async_grpc: available`, use the
+   cancelable `Client`; otherwise use the legacy remote fallback. See
+   `references/grpc-connectivity-and-smoke.md`.
 3. **Smoke** — run `/sandbox/smoke_lp.py` (+ `smoke_milp.py` for discrete
-   scheduling MILP). Confirm `Using remote GPU backend`.
+   scheduling MILP). Confirm its `execution_mode` and successful status.
 4. **Formulation skills** — read vendored `*-formulation` + `cuopt-*-api-*`
-5. **Build and solve** — real model via cuOpt; report `Problem.Status.name`
+5. **Build and solve** — real model via cuOpt; report job ID, job status,
+   solver termination, and objective
 
 Start cuOpt gates on the first optimization turn — the user does not need
 to say "use cuOpt" first.

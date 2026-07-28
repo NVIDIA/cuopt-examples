@@ -15,6 +15,7 @@ the in-sandbox agent's capability check.
 Output (default):
     rest:      <host>:<port> | unreachable
     grpc:      <host>:<port> | unreachable
+    python_async_grpc: available | unavailable
     available: rest grpc | rest | grpc | none
 
 When a probe fails, the reason is printed to stderr (e.g. "TCP refused",
@@ -27,8 +28,8 @@ Exit code: 0 if at least one endpoint is reachable, 1 if neither.
 Endpoints can be overridden via env (defaults shown):
     CUOPT_SERVER_HOST=host.openshell.internal   # REST
     CUOPT_SERVER_PORT=5000
-    CUOPT_REMOTE_HOST=host.openshell.internal   # gRPC
-    CUOPT_REMOTE_PORT=5001
+    CUOPT_GRPC_HOST=host.openshell.internal
+    CUOPT_GRPC_PORT=5001
     CUOPT_PROBE_TIMEOUT=1.0                     # seconds, also via --timeout
 """
 
@@ -43,6 +44,16 @@ from typing import Optional, Tuple
 
 
 DEFAULT_HOST = "host.openshell.internal"
+
+
+def probe_python_async_grpc() -> Tuple[bool, Optional[str]]:
+    """Return whether the embedded async Python gRPC client is importable."""
+    try:
+        from cuopt.grpc.linear_programming import Client  # noqa: F401
+
+        return True, None
+    except (ImportError, ModuleNotFoundError) as e:
+        return False, f"{type(e).__name__}: {e}"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -127,21 +138,24 @@ def main() -> int:
 
     rest_host = environ.get("CUOPT_SERVER_HOST", DEFAULT_HOST)
     rest_port = int(environ.get("CUOPT_SERVER_PORT", "5000"))
-    grpc_host = environ.get("CUOPT_REMOTE_HOST", DEFAULT_HOST)
-    grpc_port = int(environ.get("CUOPT_REMOTE_PORT", "5001"))
+    grpc_host = environ.get("CUOPT_GRPC_HOST", DEFAULT_HOST)
+    grpc_port = int(environ.get("CUOPT_GRPC_PORT", "5001"))
 
     rest_ep, rest_err = probe_rest(rest_host, rest_port, timeout)
     grpc_ep, grpc_err = probe_grpc(grpc_host, grpc_port, timeout)
+    async_grpc, async_grpc_err = probe_python_async_grpc()
 
     available = [k for k, v in (("rest", rest_ep), ("grpc", grpc_ep)) if v]
     out = {
         "rest": rest_ep,
         "grpc": grpc_ep,
+        "python_async_grpc": async_grpc,
         "available": available,
         "timeout_s": timeout,
         "errors": {
             "rest": rest_err,
             "grpc": grpc_err,
+            "python_async_grpc": async_grpc_err,
         },
     }
 
@@ -150,6 +164,7 @@ def main() -> int:
     else:
         print(f"rest:      {rest_ep or 'unreachable'}")
         print(f"grpc:      {grpc_ep or 'unreachable'}")
+        print(f"python_async_grpc: {'available' if async_grpc else 'unavailable'}")
         print(f"available: {' '.join(available) or 'none'}")
 
     if not args.quiet:

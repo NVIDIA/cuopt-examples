@@ -49,7 +49,7 @@ For the fast path, map directly from the interpreted data into cuOpt structures.
 Do not introduce a replayable intermediate artifact unless the user asks for replayability, auditability, export, or reuse.
 
 **In NemoClaw sandbox:** before building the cuOpt model, confirm
-`cuopt-sandbox` gates completed (probe → `CUOPT_REMOTE_*` → smoke test).
+`cuopt-sandbox` gates completed (probe → select gRPC capability → smoke test).
 Do not build a parallel heuristic assigner "first" — cuOpt is the first
 and only solver for assignments/schedules.
 
@@ -208,22 +208,22 @@ If relevant, also mention which constraint or resource appears to be most limiti
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python` (or `cuopt-numerical-optimization-api-cli` for MPS inputs)
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
-    before any gRPC Python solve
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + selected gRPC path)
+    before any LP/MILP solve
 
 - For QP:
   - use `numerical-optimization-formulation`
   - then use `cuopt-numerical-optimization-api-python`
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
-    before any gRPC Python solve
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + selected gRPC path)
+    before any QP solve
 
 - For routing:
   - use `routing-formulation`
   - then use `cuopt-routing-api-python`
   - follow `cuopt-user-rules`
-  - in sandbox contexts, follow `cuopt-sandbox` (gates + remote env)
-    before any gRPC Python solve
+  - in sandbox contexts, follow `cuopt-sandbox` (gates + REST)
+    before any routing solve
 
 ## Success criterion
 
