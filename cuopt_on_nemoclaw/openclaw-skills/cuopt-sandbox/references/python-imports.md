@@ -6,6 +6,9 @@
 ```python
 from cuopt.linear_programming.problem import Problem, CONTINUOUS, INTEGER, MINIMIZE, MAXIMIZE
 from cuopt.linear_programming.solver_settings import SolverSettings
+
+# Preferred when this import is available:
+from cuopt.grpc.linear_programming import Client, GrpcError, JobStatus
 ```
 
 | Task | Variable type |
@@ -26,7 +29,7 @@ bash -lc 'source /sandbox/.openclaw-data/cuopt/bin/activate && \
 If this prints `api_ok`, the SDK works — adjust your import path and
 continue with cuOpt.
 
-## Scheduling skeleton
+## Scheduling skeleton (async client available)
 
 ```python
 from cuopt.linear_programming.problem import Problem, INTEGER, MINIMIZE
@@ -40,9 +43,21 @@ for e in entities:
 # ... constraints, objective ...
 settings = SolverSettings()
 settings.set_parameter("time_limit", 600)
-p.solve(settings)
-print(p.Status.name, p.ObjValue)
+client = Client("host.openshell.internal", 5001, tls=False)
+job_id = client.submit(p, settings)
+print(f"job_id={job_id}", flush=True)
+status = client.wait(job_id, timeout=660)
+print(f"job_status={status.name}")
+if status == JobStatus.COMPLETED:
+    names = [v.getVariableName() for v in p.getVariables()]
+    solution = client.result(job_id, names)
+    print(solution.get_termination_reason(), solution.get_primal_objective())
+    print(solution.get_vars())
+    # After results are saved/validated, delete frees server capacity.
+    # delete() also cancels queued/running jobs on current nightlies.
+    client.delete(job_id)
 ```
 
-Remote env vars must be set in the same shell — see
-`references/remote-env-and-smoke.md`.
+Full lifecycle and errors: `references/async-grpc-python.md`.
+If the `Client` import fails, retain the same model-building imports and use
+`references/remote-execution-fallback.md`.

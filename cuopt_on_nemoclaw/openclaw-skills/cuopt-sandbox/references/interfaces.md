@@ -2,16 +2,21 @@
 
 ## gRPC (LP / MILP / QP)
 
-Python API with remote backend:
+Prefer the Python API with an explicit, cancelable server job:
 
-```bash
-bash -lc 'source /sandbox/.openclaw-data/cuopt/bin/activate && \
-  export CUOPT_REMOTE_HOST=host.openshell.internal && \
-  export CUOPT_REMOTE_PORT=5001 && \
-  python3 /sandbox/solve.py'
+```python
+from cuopt.grpc.linear_programming import Client
+
+client = Client("host.openshell.internal", 5001, tls=False)
 ```
 
-Skill: `cuopt-numerical-optimization-api-python` (vendored upstream).
+See `references/async-grpc-python.md` for the submit/wait/result/delete
+lifecycle. Build the model using the vendored
+`cuopt-numerical-optimization-api-python` skill.
+
+If that import is unavailable in the installed cuOpt build, use
+`references/remote-execution-fallback.md`. Do not choose the fallback when
+the async client is available.
 
 MPS files: `cuopt-numerical-optimization-api-cli` or host CLI if exposed.
 
@@ -34,5 +39,7 @@ Use REST only when the user explicitly wants the server JSON workflow.
 ## Evidence to report
 
 - Probe `available:` line
-- Smoke: `Using remote GPU backend` + status
-- Solve: `Problem.Status.name`, objective, key assignment vars
+- Smoke: `execution_mode` + successful status
+- Async solve: job ID, `JobStatus`, termination, objective, key variables
+- Legacy fallback: solver status, objective, key variables, and
+  `cancellation=unavailable`

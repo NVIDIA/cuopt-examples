@@ -218,6 +218,20 @@ Duplicate values in a foreign-key column across rows of a parent table usually s
 
 A `*_unavailability` (or `*_availability`) table documents *known absences*; duplicated FK values document *implicit conflicts*. Treat both as constraint sources. Concrete check: for every FK-looking column in a parent table, compare distinct value count to row count, and surface the column when `distinct < rows`.
 
+### Pre-solve capacity arithmetic
+
+Before handing off to formulation, compare aggregate requirements against
+upper bounds implied by the tables:
+
+- required events or appearances per entity (e.g. round-robin games per team)
+- maximum placements allowed by per-week, per-day, or per-slot caps
+- total court/slot/machine capacity across the horizon
+
+If required appearances exceed what the time structure can host, flag the
+conflict before building the full MILP. Example: 8 required games per team
+with at most 1 game per team per week over 5 weeks allows only 5 games —
+infeasible without relaxing the weekly cap.
+
 ## Examples
 
 ### Example 1: product mix tables
