@@ -1,4 +1,6 @@
-# cuOpt + NemoClaw Setup Guide
+# cuOpt + NemoClaw (with OpenClaw) Setup Guide
+
+This guide is for using cuOpt from NemoClaw with the OpenClaw agent.
 
 The cuOpt server must be running on the host before the sandbox can connect to it.
 If you don't have it running yet, see [Starting the cuOpt server](#starting-the-cuopt-server).

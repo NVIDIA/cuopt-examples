@@ -117,7 +117,7 @@
 #   the installed tools differ (non-fatal). To install the exact tested
 #   NemoClaw build:
 #
-#     NEMOCLAW_INSTALL_TAG=v0.0.64 \
+#     NEMOCLAW_INSTALL_TAG=v0.0.93 \
 #       curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
 #   The public installer defaults to the `lkg` ref, which moves.
@@ -202,14 +202,14 @@ CUOPT_TEST_SANDBOX_GRPC=""
 #
 # To install the exact tested NemoClaw build (openshell is bundled with the
 # NemoClaw release this script was verified against):
-#   NEMOCLAW_INSTALL_TAG=v0.0.64 \
+#   NEMOCLAW_INSTALL_TAG=v0.0.93 \
 #     curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 #
 # The public installer defaults to the `lkg` ref, which moves.
 #
 # Silence the banner with NEMOCLAW_VERSION_CHECK=0.
-TESTED_NEMOCLAW_VERSION="0.0.64"
-TESTED_OPENSHELL_VERSION="0.0.44"
+TESTED_NEMOCLAW_VERSION="0.0.93"
+TESTED_OPENSHELL_VERSION="0.0.85"
 
 # ── NemoClaw / OpenShell version compatibility check ─────────────
 # Non-fatal. Prints a warning banner when the installed tool version
@@ -371,8 +371,7 @@ sandbox_exec_root() {
 # sandbox_run_script <sandbox-name>
 #   Read a bash script from stdin and run it in the sandbox container.
 #   Prefer this over piping to `openshell sandbox connect` for batch
-#   commands — connect echoes the script to the terminal (OpenShell
-#   0.0.44+ bracketed-paste / line-echo behavior).
+#   commands.
 sandbox_run_script() {
   local sandbox="$1"
   local container
