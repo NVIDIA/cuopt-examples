@@ -15,9 +15,11 @@
 
 """Strip unrecognized top-level YAML keys from openshell policy output.
 
-openshell policy get --full may include metadata fields (e.g. "Version")
-that openshell policy set rejects. This script keeps only the keys in the
-accepted schema and drops everything else.
+openshell policy get --full prints a human-readable metadata header
+("Version", "Hash", "Config rev", ...), then a `---` separator, then the
+policy payload. Only the payload is valid input for openshell policy set,
+so cut at the separator rather than enumerating header field names, which
+change between openshell releases.
 
 Usage:
     openshell policy get --full <sandbox> | python3 strip_policy_metadata.py
@@ -34,13 +36,26 @@ ALLOWED_KEYS = {
     "network_policies",
 }
 
+# Header labels may contain spaces ("Config rev:"), so the key pattern is
+# wider than the schema's own snake_case keys.
+TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_ -]*):")
 
-def strip_metadata(text: str) -> str:
+
+def drop_table_header(text: str) -> str:
+    """Return the payload following openshell's `---` metadata separator."""
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        if line.strip() == "---":
+            return "\n".join(lines[index + 1 :])
+    return text
+
+
+def strip_unknown_keys(text: str) -> str:
     lines = text.split("\n")
     result = []
     skip = False
     for line in lines:
-        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):", line)
+        m = TOP_LEVEL_KEY.match(line)
         if m:
             key = m.group(1)
             if key not in ALLOWED_KEYS:
@@ -53,6 +68,10 @@ def strip_metadata(text: str) -> str:
         skip = False
         result.append(line)
     return "\n".join(result)
+
+
+def strip_metadata(text: str) -> str:
+    return strip_unknown_keys(drop_table_header(text))
 
 
 if __name__ == "__main__":
