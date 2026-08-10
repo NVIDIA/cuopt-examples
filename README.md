@@ -34,24 +34,26 @@ cd cuopt-examples
 For cuda-13:
 
 ```bash
-docker pull nvidia/cuopt:25.12.0a-cuda13.0-py3.13
+docker pull nvidia/cuopt:latest-cu13
+# To pin to a specific release: docker pull nvidia/cuopt:26.8.0-cu13
 ```
 
-For cuda-12
+For cuda-12:
 ```bash
-docker pull nvidia/cuopt:25.12.0a-cuda12.9-py3.13
+docker pull nvidia/cuopt:latest-cu12
+# To pin to a specific release: docker pull nvidia/cuopt:26.8.0-cu12
 ```
 
 3. Run the examples:
 
 For cuda-13:
 ```bash
-docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.12.0a-cuda13.0-py3.13 /bin/bash -c "pip install -r requirements.txt; jupyter-notebook"
+docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:latest-cu13 /bin/bash -c "pip install -r requirements.txt; jupyter-notebook"
 ```
 
 For cuda-12:
 ```bash
-docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:25.12.0a-cuda12.9-py3.13 /bin/bash -c "pip install -r requirements.txt; jupyter-notebook"
+docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace nvidia/cuopt:latest-cu12 /bin/bash -c "pip install -r requirements.txt; jupyter-notebook"
 ```
 
 4. Open your browser with the link provided in the terminal, and you can see the notebooks.

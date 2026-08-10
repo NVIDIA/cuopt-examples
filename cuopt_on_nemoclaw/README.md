@@ -184,12 +184,15 @@ official cuOpt container — the sandbox expects them at ports 5000 (REST) and
 - NVIDIA driver + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host (`nvidia-ctk --version`).
 - Docker can see the GPU: `docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi`.
 
-Pick an image tag that matches your CUDA + Python; the latest stable line is
-`nvidia/cuopt:latest-cuda13.0-py3.13` (Docker Hub, no auth needed). The same
-image is published on NGC at `nvcr.io/nvidia/cuopt/cuopt:<tag>`.
+Pick an image tag that matches your CUDA version; the latest stable lines are
+`nvidia/cuopt:latest-cu13` (CUDA 13) and `nvidia/cuopt:latest-cu12` (CUDA 12),
+available on Docker Hub with no auth required.
+To pin to a specific release, use a versioned tag such as `26.8.0-cu13`.
 
 ```bash
-export CUOPT_IMAGE=nvidia/cuopt:latest-cuda13.0-py3.13
+export CUOPT_IMAGE=nvidia/cuopt:latest-cu13
+# To pin to a specific release:
+# export CUOPT_IMAGE=nvidia/cuopt:26.8.0-cu13
 docker pull "$CUOPT_IMAGE"
 ```
 
