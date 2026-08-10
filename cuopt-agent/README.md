@@ -51,7 +51,7 @@ The cuOpt Agent is a reference optimization assistant that translates natural-la
 
 - NVIDIA GPU with CUDA support
 - Docker and Docker Compose (with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html))
-- Access to `nvcr.io/nvidia/cuopt/cuopt:26.2.0-cuda12.9-py3.13` base image ([NGC](https://catalog.ngc.nvidia.com/))
+- Access to `nvidia/cuopt:latest-cu12` base image ([Docker Hub](https://hub.docker.com/r/nvidia/cuopt)) or a pinned release such as `nvidia/cuopt:26.8.0-cu12`
 - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com/)
 
 **Optional:**
