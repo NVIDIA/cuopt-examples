@@ -1,0 +1,9 @@
+staff_id,name,role,charge_eligible,max_hours,shift_preference
+RN001,Avery Patel,RN,1,36,day
+RN002,Brooke Lee,RN,1,36,night
+RN003,Casey Morgan,RN,0,36,either
+RN004,Devon Kim,RN,0,24,day
+RN005,Emery Singh,RN,1,36,either
+CNA001,Finley Cruz,CNA,0,36,day
+CNA002,Gray Chen,CNA,0,36,night
+CNA003,Harper Reed,CNA,0,24,either
