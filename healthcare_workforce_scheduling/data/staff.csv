@@ -1,4 +1,4 @@
-staff_id,name,role,charge_eligible,max_hours,shift_preference
+staff_id,name,role,charge_eligible,regular_hours_limit,shift_preference
 RN001,Avery Patel,RN,1,36,day
 RN002,Brooke Lee,RN,1,36,night
 RN003,Casey Morgan,RN,0,36,either
