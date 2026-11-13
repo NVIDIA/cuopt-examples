@@ -24,7 +24,7 @@ COPY skills /app/skills
 COPY external/cuopt/skills /app/skills/cuopt
 COPY AGENTS.md /app/AGENTS.md
 
-# Install manually inside container (e.g. uv pip install --extra-index-url https://pypi.nvidia.com -e /app/cuopt_agent)
+# Install manually inside container (e.g. uv pip install -e /app/cuopt_agent)
 
 WORKDIR /app/cuopt_agent
 

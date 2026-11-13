@@ -240,7 +240,7 @@ docker pull "$CUOPT_IMAGE"   # then re-run the start commands
 ```
 
 > Running the server natively (without Docker) is supported — install
-> `cuopt-server-cu12` from `https://pypi.nvidia.com` and start
+> `cuopt-server-cu13` from PyPI and start
 > `python3 -m cuopt_server.cuopt_service` (REST) or `cuopt_grpc_server`
 > (gRPC). See the [upstream cuOpt docs](https://docs.nvidia.com/cuopt/) for
 > details. The container path above is preferred because it pins CUDA and
