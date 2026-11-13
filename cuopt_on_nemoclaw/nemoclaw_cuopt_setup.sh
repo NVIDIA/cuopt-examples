@@ -157,9 +157,12 @@ CUOPT_STABLE_VERSION="${CUOPT_STABLE_VERSION:-26.06}"
 CUOPT_PIP_PACKAGES_WAS_SET=false
 [[ -n "${CUOPT_PIP_PACKAGES+x}" ]] && CUOPT_PIP_PACKAGES_WAS_SET=true
 CUOPT_PIP_PACKAGES="${CUOPT_PIP_PACKAGES:-cuopt-sh-client cuopt-cu13==${CUOPT_STABLE_VERSION} grpcio}"
-CUOPT_PIP_EXTRA_INDEX="${CUOPT_PIP_EXTRA_INDEX:-https://pypi.nvidia.com}"
+CUOPT_PIP_EXTRA_INDEX="${CUOPT_PIP_EXTRA_INDEX:-}"
 CUOPT_PIP_NIGHTLY_INDEX="${CUOPT_PIP_NIGHTLY_INDEX:-https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/}"
-CUOPT_PIP_ONLINE_FLAGS="--extra-index-url=${CUOPT_PIP_EXTRA_INDEX}"
+CUOPT_PIP_ONLINE_FLAGS=""
+if [[ -n "${CUOPT_PIP_EXTRA_INDEX}" ]]; then
+  CUOPT_PIP_ONLINE_FLAGS="--extra-index-url=${CUOPT_PIP_EXTRA_INDEX}"
+fi
 CUOPT_NIGHTLY=false
 CUOPT_NIGHTLY_VERSION=""
 
@@ -812,7 +815,7 @@ generate_policy_entries() {
 
   cat <<YAML
 
-  # ── cuOpt: PyPI + NVIDIA PyPI + cuOpt server (nvidia-cuopt cuopt_claw) ──
+  # ── cuOpt: PyPI + cuOpt server (nvidia-cuopt cuopt_claw) ──
   # Hostname endpoints need allowed_ips for the proxy to match resolved IPs.
   # Binary lists enumerate every Python the sandbox might use (system +
   # venv at /sandbox/${CUOPT_VENV}/bin) so pip works from any of them.
@@ -822,14 +825,6 @@ generate_policy_entries() {
       - host: pypi.org
         port: 443
       - host: files.pythonhosted.org
-        port: 443
-    binaries:
-${pybins}
-
-  nvidia_pypi:
-    name: nvidia-pypi
-    endpoints:
-      - host: pypi.nvidia.com
         port: 443
     binaries:
 ${pybins}
@@ -928,7 +923,10 @@ configure_cuopt_packages() {
   fi
 
   CUOPT_PIP_PACKAGES="cuopt-sh-client ${cuopt_requirement} grpcio"
-  CUOPT_PIP_ONLINE_FLAGS="--pre --extra-index-url=${CUOPT_PIP_EXTRA_INDEX} --extra-index-url=${CUOPT_PIP_NIGHTLY_INDEX}"
+  CUOPT_PIP_ONLINE_FLAGS="--pre --extra-index-url=${CUOPT_PIP_NIGHTLY_INDEX}"
+  if [[ -n "${CUOPT_PIP_EXTRA_INDEX}" ]]; then
+    CUOPT_PIP_ONLINE_FLAGS+=" --extra-index-url=${CUOPT_PIP_EXTRA_INDEX}"
+  fi
 }
 
 nightly_latest_requested() {
@@ -1097,8 +1095,8 @@ mkdir -p '$sandbox_stage'
 n_pkgs=\$(wc -l < '$sandbox_stage/requirements.txt')
 echo "    frozen \$n_pkgs packages"
 # Same indexes / --pre as online install: freeze pins alpha builds
-# (e.g. cudf-cu13==26.8.0a978) that pypi.nvidia.com does not carry.
-# Prefer pip's HTTP cache from the prior install; nightlies are the
+# (e.g. cudf-cu13==26.8.0a978) that PyPI does not carry.
+# Prefer pip's HTTP cache from the prior install; the nightly index is the
 # fallback when the cache misses.
 '$sandbox_venv/bin/pip' download \\
   --no-deps \\

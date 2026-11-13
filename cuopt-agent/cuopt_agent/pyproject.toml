@@ -21,7 +21,6 @@ requires = ["setuptools>=64", "setuptools_dynamic_dependencies>=1.0.0"]
 where = ["src"]
 
 [tool.uv]
-extra-index-url = ["https://pypi.nvidia.com"]
 # Force numpy<2.3 for cuOpt/numba; overrides nvidia-nat-core's numpy>=2.3
 override-dependencies = ["numpy>=1.22,<2.3"]
 
@@ -36,7 +35,7 @@ classifiers = ["Programming Language :: Python"]
 
 [tool.setuptools_dynamic_dependencies]
 # cuopt-cu12 pin must match the container base image (Dockerfile.dev FROM line).
-# In-container: already satisfied, pip/uv skips it.  Local: pulled from pypi.nvidia.com.
+# In-container: already satisfied, pip/uv skips it.  Local: installed from PyPI.
 dependencies = [
   "nvidia-nat[eval,langchain,phoenix]~=1.5.0",
   "deepagents",
