@@ -32,6 +32,11 @@ general:
       #   api_key: ${LANGSMITH_API_KEY}
   front_end:
     _type: fastapi
+    # Suppress intermediate_data: SSE lines on /v1/chat/completions (API Catalog expects data: chunks only).
+    # Workflow/tool traces remain available via Phoenix tracing. Use step_adaptor mode custom/default
+    # only for interactive UIs that consume intermediate_data.
+    step_adaptor:
+      mode: off
     endpoints:
       - path: /health
         method: GET
