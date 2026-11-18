@@ -1,7 +1,7 @@
 # EARLI: Evolutionary Algorithm with RL Initialization
 ## a cuOpt‑powered combinatorial optimization framework
 
-This section demonstrates how to use cuOpt with [EARLI](https://github.com/NVlabs/EARLI), published by NVIDIA as part of the paper [***Accelerating Vehicle Routing via AI-Initialized Genetic Algorithms***](https://arxiv.org/abs/2504.06126).
+This section demonstrates how to use cuOpt with [EARLI](https://github.com/NVlabs/EARLI), published by NVIDIA as part of the paper [***Reinforcement learning for initializing genetic algorithms in vehicle routing***](https://www.nature.com/articles/s44488-026-00019-7) (Communications AI & Computing, 2026).
 
 EARLI is a hybrid framework for solving the Vehicle Routing Problem (VRP). It uses Reinforcement Learning (RL) to learn to quickly generate high-quality solutions; then uses these as the initial population of a Genetic Algorithm (GA). The RL initialization enables leveraging of data for generalization across problems and acceleration of solving new instances. The GA search leverages inference time to refine the solution iteratively. Together, EARLI accelerates the time to find state-of-the-art solutions to VRP instances.
 
@@ -56,14 +56,18 @@ This downloads into `./datasets/` VRP problems based on real Brazilian e-commerc
 
 # Cite Us
 
-This repo is published by NVIDIA as part of the paper ***Accelerating Vehicle Routing via AI-Initialized Genetic Algorithms***.
+This repo is published by NVIDIA as part of the paper [***Reinforcement learning for initializing genetic algorithms in vehicle routing***](https://www.nature.com/articles/s44488-026-00019-7), Communications AI & Computing 1, 17 (2026).
 To cite:
 
 ```bibtex
-@article{EARLI25,
-  title={Accelerating Vehicle Routing via AI-Initialized Genetic Algorithms},
+@article{EARLI26,
+  title={Reinforcement learning for initializing genetic algorithms in vehicle routing},
   author={Greenberg, Ido and Sielski, Piotr and Linsenmaier, Hugo and Gandham, Rajesh and Mannor, Shie and Fender, Alex and Chechik, Gal and Meirom, Eli},
-  journal={arXiv preprint},
-  year={2025}
+  journal={Communications AI \& Computing},
+  volume={1},
+  number={1},
+  pages={17},
+  year={2026},
+  doi={10.1038/s44488-026-00019-7}
 }
 ```
