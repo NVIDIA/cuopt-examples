@@ -294,7 +294,8 @@ def solve_lp_from_dict(problem_dict, solver, matrix_variable_bounds, solver_mode
                 traceback.print_exc()
         else:
             try:
-                result = prob.solve(verbose=verbose,
+                result = prob.solve(solver=solver,
+                                    verbose=verbose,
                                     solver_verbose=verbose or solver_verbose)
             except Exception:
                 pass
