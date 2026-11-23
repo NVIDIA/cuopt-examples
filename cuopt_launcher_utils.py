@@ -14,7 +14,7 @@ from ipywidgets import Button, VBox, HBox, Output, Dropdown, Layout, HTML as HTM
 
 # Configuration
 REPO_URL = "https://github.com/NVIDIA/cuopt-examples.git"
-DEFAULT_BRANCH = "branch-25.10"
+DEFAULT_BRANCH = "main"
 REPO_NAME = "cuopt-examples"
 
 # Detect if running in Colab
@@ -203,9 +203,7 @@ def get_setup_code(notebook_path, branch='main'):
     setup_code = f"""# ============================================================================
 # Setup code for Google Colab
 # ============================================================================
-# IMPORTANT: 
-# 1. Run this code in a new cell AFTER cuopt pip install!
-# 2. Re-run this every time you restart your Colab session!
+# Paste this into the notebook cell that asks for the launcher setup code.
 # ============================================================================
 
 import os
@@ -290,7 +288,7 @@ def create_notebook_item(nb, branch):
     )
     
     instruction_label = Label(
-        value='👇 Copy this code (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C). ⚠️ Run in a new cell AFTER cuopt pip install & after each session restart!',
+        value='👇 Copy this code (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C). Paste it into the cell in the notebook that asks for the launcher setup code.',
         layout=Layout(visibility='hidden')
     )
     
@@ -452,11 +450,12 @@ def create_notebook_browser():
             </p>
         </div>
         <div>
-            <strong style='color: #2d5016; font-size: 13px;'>Step 2: Setup Data Files (Required)</strong>
+            <strong style='color: #2d5016; font-size: 13px;'>Step 2: Setup Code (only if the notebook asks for it)</strong>
             <p style='margin: 4px 0 0 0; font-size: 13px; color: #2d5016; line-height: 1.5;'>
-                Click <span style='background-color: #76B900; color: white; 
+                If the notebook has a cell asking for the launcher setup code, click
+                <span style='background-color: #76B900; color: white; 
                 padding: 2px 6px; border-radius: 3px; font-size: 11px;'>📋 Show Setup Code</span>, 
-                copy it, paste it in a new code block after cuopt pip install, and run it
+                copy it, and paste it into that cell
             </p>
         </div>
     </div>
