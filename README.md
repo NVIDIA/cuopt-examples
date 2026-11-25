@@ -59,9 +59,13 @@ docker run -it --rm --gpus all --network=host -v $(pwd):/workspace -w /workspace
 4. Open your browser with the link provided in the terminal, and you can see the notebooks.
 
 
+## Run in Google Colab
+
+To run the examples in Google Colab, open the [examples launcher notebook](https://colab.research.google.com/github/NVIDIA/cuopt-examples/blob/main/colab_setup/cuopt_examples_launcher.ipynb). It clones this repository into your Colab runtime and lets you browse the notebooks. Use a GPU runtime. Notebooks that need the launcher setup code say so in their own cells.
+
 ## Note
 
-These notebooks have been tested on [NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ), [Google Colab](https://colab.research.google.com/github/NVIDIA/cuopt-examples/blob/cuopt_examples_launcher/cuopt_examples_launcher.ipynb), and local Jupyter environments. They may work on other platforms as well.
+These notebooks have been tested on [NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ), [Google Colab](https://colab.research.google.com/github/NVIDIA/cuopt-examples/blob/main/colab_setup/cuopt_examples_launcher.ipynb), and local Jupyter environments. They may work on other platforms as well.
 
 
 ## Repository Structure
