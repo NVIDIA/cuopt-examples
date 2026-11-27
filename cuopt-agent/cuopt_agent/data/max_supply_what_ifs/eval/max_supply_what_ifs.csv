@@ -83,3 +83,27 @@ Analyse the results:
 2. How does the additional material improve the objective value?
 3. Does RM4 inventory carry across multiple periods, or is it consumed quickly?
 4. What would happen if the shipment were moved to week 5 instead of week 2?","3470065"
+"max_supply_4","## Scenario
+
+The max-supply model maximizes priority-weighted finished-goods inventory but ignores what
+production costs. Finance needs to know how much supply is reachable under a fixed budget.
+
+## Request
+
+Add a total-cost accounting to the model from `item_costs.csv` (`unit_cost`, `holding_cost`) and
+`resource_costs.csv` (`production_cost_per_hour`), defined over the model's existing variables — no
+new decisions:
+
+```
+total_cost = sum over procured i, period t of  buy[i,t] * unit_cost[i]                       (procurement)
+           + sum over all items i, period t of inventory[i,t] * holding_cost[i]              (holding)
+           + sum over (process p, resource r), period t of x[p,r,t] * hours_per_unit[p] * production_cost_per_hour[r]   (production)
+```
+
+Constrain `total_cost <= 9149.8` and re-solve for the model's existing objective (maximize
+priority-weighted finished-goods inventory at the end of the horizon) on the sample dataset
+(10 periods).
+
+Report the resulting optimal objective value, solving to proven optimality (tighten
+`mip_relative_gap` to 0 — at the default 1% gap the solver can stop on a suboptimal
+incumbent inside the gap).","2670000"
