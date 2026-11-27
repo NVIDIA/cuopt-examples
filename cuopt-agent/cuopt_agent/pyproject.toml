@@ -23,7 +23,8 @@ where = ["src"]
 [tool.uv]
 extra-index-url = ["https://pypi.nvidia.com"]
 # Force numpy<2.3 for cuOpt/numba; overrides nvidia-nat-core's numpy>=2.3
-override-dependencies = ["numpy>=1.22,<2.3"]
+# Force pyjwt>=2.12 for CVE-2026-32597 (crit header validation, RFC 7515 §4.1.11)
+override-dependencies = ["numpy>=1.22,<2.3", "pyjwt>=2.12"]
 
 [project]
 name = "nat_cuopt_agent"
