@@ -27,4 +27,4 @@ For advanced portfolio optimization examples including:
 - Turnover optimization
 - Mean-CVaR optimization with comprehensive workflows
 
-Please visit the **[NVIDIA Quantitative Portfolio Optimization repository](https://github.com/NVIDIA-AI-Blueprints/quantitative-portfolio-optimization)**
+Please visit the **[Portfolio Optimization Powered by NVIDIA cuOpt repository](https://github.com/NVIDIA-AI-Blueprints/portfolio-optimization)**
