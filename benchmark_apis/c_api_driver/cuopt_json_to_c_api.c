@@ -361,15 +361,15 @@ int parse_cuopt_json(const char* filename, ProblemData* data) {
                 cJSON* type_item = types->child;
                 while (bound_item && type_item && i < data->num_constraints) {
                     cuopt_float_t bound_value = parse_numeric_value(bound_item);
-                    char* type = type_item->valuestring;
-                    
-                    if (strcmp(type, "L") == 0) {  // Less than or equal
+                    char* type = cJSON_IsString(type_item) ? type_item->valuestring : NULL;
+
+                    if (type && strcmp(type, "L") == 0) {  // Less than or equal
                         data->constraint_lower_bounds[i] = -CUOPT_INFINITY;
                         data->constraint_upper_bounds[i] = bound_value;
-                    } else if (strcmp(type, "G") == 0) {  // Greater than or equal
+                    } else if (type && strcmp(type, "G") == 0) {  // Greater than or equal
                         data->constraint_lower_bounds[i] = bound_value;
                         data->constraint_upper_bounds[i] = CUOPT_INFINITY;
-                    } else if (strcmp(type, "E") == 0) {  // Equal
+                    } else if (type && strcmp(type, "E") == 0) {  // Equal
                         data->constraint_lower_bounds[i] = bound_value;
                         data->constraint_upper_bounds[i] = bound_value;
                     }
@@ -431,8 +431,8 @@ int parse_cuopt_json(const char* filename, ProblemData* data) {
         i = 0;
         cJSON* type_item;
         cJSON_ArrayForEach(type_item, variable_types) {
-            char* type_str = type_item->valuestring;
-            if (strcmp(type_str, "I") == 0) {
+            char* type_str = cJSON_IsString(type_item) ? type_item->valuestring : NULL;
+            if (type_str && strcmp(type_str, "I") == 0) {
                 data->variable_types[i] = CUOPT_INTEGER;
             } else {
                 data->variable_types[i] = CUOPT_CONTINUOUS;
